@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# macOS / OneDrive junk
+.DS_Store
+~$*
+
+# Editors
+.vscode/
+.idea/
+
+# Claude Code local session config
+.claude/
+
+# Common output/results dirs
+*.log
+results/
+outputs/

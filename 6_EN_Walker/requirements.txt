@@ -1,0 +1,12 @@
+numpy>=1.24,<3
+matplotlib>=3.7,<4
+torch>=2.0,<3
+evotorch>=0.5,<0.7
+pillow>=10,<11
+
+# Phase C only (sim-to-real transfer test against a real MuJoCo hexapod) --
+# not needed for Phase A/B.
+gymnasium[mujoco]>=1.0,<2
+mujoco>=3.0,<4
+imageio>=2.30,<3
+imageio-ffmpeg>=0.4,<1

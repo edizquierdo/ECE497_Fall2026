@@ -2,7 +2,7 @@
 
 ## Why this sequence exists
 
-Every project in this collection asks a version of the same question: **where does intelligent behavior actually come from?**
+Every project in this collection asks a version of the same question: **where does intelligent behavior come from?** **how can we make artificial systems with the flexibility, robustness, and adaptivity of living systems?**
 
 You'll start with a robot that has no brain at all — just two wires connecting sensors to motors — and watch it do something that looks purposeful. By the end, you'll have evolved a recurrent neural circuit that discovers, entirely on its own, how to coordinate six legs into a walking gait nobody hand-designed. Nothing in between is a detour. Each project hands you a working piece of machinery and a real, open question about it, and each one builds directly on the last: the fitness functions you write in Project 1 come back in Project 4; the neuroevolution pipeline you build in Project 3 gets reused, largely unchanged, all the way through Project 6; and the genetic algorithm from Project 2 shows up one more time in Project 6 standing next to a second algorithm entirely (CMA-ES), so you can compare them directly instead of taking Project 2's conclusions on faith.
 

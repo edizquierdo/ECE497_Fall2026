@@ -4,12 +4,10 @@ or CTRNN) evolved against walker.py's idealized physics, and run it on
 hexapod.xml's real MuJoCo rigid-body simulation instead -- same evolved
 weights, no re-training.
 
-THE REMAINING PROBLEM THIS FILE SOLVES (deliberately still not fully
-solved for you -- see below): hexapod.xml's leg design (a single pivot
-per leg with 2 co-located joints, sweep + lift) was specifically chosen
-to match walker.py's own per-leg abstraction as closely as possible, so
-the two interfaces line up far more directly than a hip+knee kinematic
-chain ever could:
+hexapod.xml's leg design (a single pivot per leg with 2 co-located
+joints, sweep + lift) was specifically chosen to match walker.py's own
+per-leg abstraction as closely as possible, so the two interfaces line
+up far more directly than a hip+knee kinematic chain ever could:
 
   walker.py (idealized):
     observation = 6 leg angles (one per leg)
@@ -22,19 +20,22 @@ chain ever could:
 
 Each leg's SWEEP angle corresponds directly to walker.py's single
 per-leg angle sensor -- no discarded state, unlike a hip+knee design
-where a knee angle would have nowhere to go. And each leg's action pair
-maps directly: sweep torque from (fwd - bwd), lift torque from foot.
+where a knee angle would have nowhere to go. And the SWEEP torque maps
+directly too: `sweep_torque = fwd - bwd`, exactly what the genome was
+evolved to produce.
 
-WHAT'S STILL AN OPEN DESIGN CHOICE, on purpose: `foot` in walker.py is a
-binary-ish stance/swing signal that walker.py's own physics interprets
-by zeroing body velocity when the tripod is unsupported -- it never
-commands an actual leg-lift torque. hexapod.xml's lift joint needs an
-actual torque command every tick, so `foot` has to be turned into one
-somehow. The mapping below (foot > 0.5 -> push the leg down/planted,
-foot <= 0.5 -> lift it) is the natural reading, but the specific
-torque magnitudes and the interaction between sweep and lift torques
-during a real, physically-supported stance phase are NOT validated --
-that's the actual experiment.
+The LIFT torque is the one piece that has to be invented: `foot` in
+walker.py is a binary-ish stance/swing signal that walker.py's own
+physics interprets by zeroing body velocity when the tripod is
+unsupported -- it never commands an actual leg-lift torque. hexapod.xml's
+lift joint needs an actual torque command every tick, so `foot` has to be
+turned into one somehow. `walker_action_to_hexapod_action()` below does
+this with a **closed-loop PD controller**: it reads the lift joint's
+*actual* current angle and velocity (from the hexapod's own sensors) and
+drives it toward a target angle -- down while `foot > 0.5` (planted), up
+while swinging -- tapering the torque off as the joint gets close, rather
+than pushing at a constant rate regardless of where the joint already is.
+This is the same idea as a servo holding a position, not shoving forever.
 
 Nothing here guarantees the evolved gait still works. A genome that
 walks fine in walker.py's idealized physics may drag a leg, slip, or
@@ -68,16 +69,50 @@ def hexapod_obs_to_walker_obs(hexapod_obs: np.ndarray) -> np.ndarray:
     return sweep_angles
 
 
-def walker_action_to_hexapod_action(action18: np.ndarray, torque_scale: float = 1.0) -> np.ndarray:
+LIFT_DOWN_DEG = -10.0    # target lift angle while a leg is "planted" (foot > 0.5); joint range is [-15, 60]
+LIFT_UP_DEG = 40.0       # target lift angle while a leg is "swinging" (foot <= 0.5)
+LIFT_KP = 0.08           # base proportional gain: torque (in [-1,1]) per degree of angle error
+LIFT_KD = 0.02           # base derivative gain: torque per (degree/second) of joint velocity
+LIFT_GAIN_DEFAULT = 2.0  # default multiplier on LIFT_KP/LIFT_KD -- see --lift_gain
+
+
+def hexapod_obs_to_lift_state(hexapod_obs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Extract each leg's current lift-joint angle and angular velocity (in
+    degrees / degrees-per-second) from the real hexapod's 35-value
+    observation, in LEG_NAMES order. Layout: [z(1), quat(4), 12 joint
+    angles (sweep,lift)x6 at [5:17], torso vel(6) at [17:23], 12 joint
+    velocities (sweep,lift)x6 at [23:35]] -- see hexapod_env.py's _get_obs()."""
+    joint_angles = hexapod_obs[5:17]
+    joint_vels = hexapod_obs[23:35]
+    lift_angles_deg = np.degrees(joint_angles[1::2])
+    lift_vels_deg = np.degrees(joint_vels[1::2])
+    return lift_angles_deg, lift_vels_deg
+
+
+def walker_action_to_hexapod_action(
+    action18: np.ndarray, hexapod_obs: np.ndarray, torque_scale: float = 1.0,
+    lift_gain: float = LIFT_GAIN_DEFAULT,
+) -> np.ndarray:
     """18 walker.py values -> 12 hexapod torques, in LEG_NAMES order
-    (matches walker.py's own leg ordering). See this file's module
-    docstring for what's a direct correspondence (sweep) vs. still an
-    open design choice (lift, from `foot`)."""
+    (matches walker.py's own leg ordering).
+
+    Sweep is a direct correspondence: `sweep_torque = fwd - bwd`, scaled by
+    `torque_scale`. Lift is a closed-loop PD controller (see module
+    docstring): it reads the lift joint's actual angle/velocity from
+    `hexapod_obs` and drives it toward LIFT_DOWN_DEG (planted) or
+    LIFT_UP_DEG (swinging), tapering off as it arrives rather than pushing
+    at a constant rate. `lift_gain` scales the PD gains (LIFT_KP/LIFT_KD)
+    and is deliberately independent of `torque_scale`, which only affects
+    sweep -- see `hexapod_lift_sweep.py` for exploring both together."""
     action18 = np.clip(np.asarray(action18, dtype=float), 0.0, 1.0).reshape(N_LEGS, 3)
     fwd, bwd, foot = action18[:, 0], action18[:, 1], action18[:, 2]
 
     sweep_torque = torque_scale * (fwd - bwd)  # direct correspondence, in [-1, 1]
-    lift_torque = torque_scale * np.where(foot > 0.5, -0.3, 0.5)  # planted (push down) vs swinging (lift)
+
+    lift_angles_deg, lift_vels_deg = hexapod_obs_to_lift_state(hexapod_obs)
+    target_deg = np.where(foot > 0.5, LIFT_DOWN_DEG, LIFT_UP_DEG)
+    kp, kd = LIFT_KP * lift_gain, LIFT_KD * lift_gain
+    lift_torque = kp * (target_deg - lift_angles_deg) - kd * lift_vels_deg
 
     hexapod_action = np.empty(12)
     hexapod_action[0::2] = sweep_torque
@@ -94,7 +129,8 @@ def run_transfer(
     n_interneurons=0,
     mode="rpg",
     torque_scale=1.0,
-    timescale=1.0,
+    timescale=4.0,
+    lift_gain=LIFT_GAIN_DEFAULT,
     duration=50.0,
     seed=None,
     render=False,
@@ -124,15 +160,13 @@ def run_transfer(
     clock relative to the real hexapod's physical clock. The genome was
     evolved with the CTRNN's internal clock and walker.py's body advancing
     in lockstep, one act() per walker.py tick of TS=0.1s -- but each
-    hexapod_env.py step here is only 0.05s of real physical time, so
-    driving the CTRNN with its default dt=TS makes its internal rhythm run
-    fast relative to how much the real body actually gets to move per
-    control step. `timescale` multiplies the dt passed to `act()`
-    (`dt = TS * timescale`): higher values make the CPG's commanded leg
-    motion play out faster relative to the body's physical response,
-    lower values slow it down -- see hexapod_timescale_sweep.py for
-    finding a good value empirically, the same way hexapod_torque_sweep.py
-    does for --torque_scale."""
+    hexapod_env.py step here is only 0.05s of real physical time, so the
+    two clocks don't automatically line up. `timescale` multiplies the dt
+    passed to `act()` (`dt = TS * timescale`): higher values make the
+    CPG's commanded leg motion play out faster relative to the body's
+    physical response, lower values slow it down. `lift_gain` scales the
+    PD lift controller's own gains -- see `hexapod_lift_sweep.py` for
+    exploring `timescale` and `lift_gain` together."""
     if seed is not None:
         np.random.seed(seed)
         torch.manual_seed(seed)
@@ -170,7 +204,9 @@ def run_transfer(
         else:
             action18 = model.act(walker_obs, sensors_on=sensors_on, dt=TS * timescale)
 
-        hexapod_action = walker_action_to_hexapod_action(action18, torque_scale=torque_scale)
+        hexapod_action = walker_action_to_hexapod_action(
+            action18, obs, torque_scale=torque_scale, lift_gain=lift_gain
+        )
         obs, reward, terminated, truncated, info = env.step(hexapod_action)
 
         if terminated:
@@ -202,17 +238,21 @@ def parse_args():
                          help="[ctrnn only] sensor condition to run under: cpg = no sensory "
                               "input, rpg = live leg-angle feedback, mpg = alternate by rep")
     parser.add_argument("--torque_scale", type=float, default=1.0,
-                         help="Global scale on the mapped sweep/lift torques -- walker.py's action "
-                              "magnitudes were never tuned against real actuator gains, so this is "
-                              "worth sweeping.")
-    parser.add_argument("--timescale", type=float, default=1.0,
+                         help="Scale on the mapped sweep torque -- walker.py's action magnitudes "
+                              "were never tuned against real actuator gains, so this is worth "
+                              "sweeping.")
+    parser.add_argument("--timescale", type=float, default=4.0,
                          help="[ctrnn only] Scales the CTRNN's internal clock relative to the "
                               "real hexapod's physical clock (dt passed to act() = TS * "
                               "timescale). The genome evolved with its internal clock and "
                               "walker.py's body in lockstep at TS=0.1s/tick, but hexapod_env.py's "
-                              "real physical step is only 0.05s -- so the default (1.0) may run "
-                              "the CPG rhythm too fast relative to how far the real body moves per "
-                              "control step. See hexapod_timescale_sweep.py.")
+                              "real physical step is only 0.05s -- worth exploring together with "
+                              "--lift_gain (see hexapod_lift_sweep.py) rather than assuming the "
+                              "default is right.")
+    parser.add_argument("--lift_gain", type=float, default=LIFT_GAIN_DEFAULT,
+                         help="Multiplier on the PD lift controller's gains (LIFT_KP/LIFT_KD), "
+                              "independent of --torque_scale (which scales sweep only) -- worth "
+                              "exploring together with --timescale, see hexapod_lift_sweep.py.")
     parser.add_argument("--duration", type=float, default=50.0,
                          help="Simulated seconds to run, same convention as walker.py/sim.py/"
                               "evolve.py's --duration. NOT the same as a raw MuJoCo step count: "
@@ -239,6 +279,7 @@ def main():
         mode=args.mode,
         torque_scale=args.torque_scale,
         timescale=args.timescale,
+        lift_gain=args.lift_gain,
         duration=args.duration,
         seed=args.seed,
         render=args.render,

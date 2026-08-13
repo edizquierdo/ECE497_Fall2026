@@ -129,6 +129,11 @@ def plot_gait_diagram(
     ax_gait.imshow(
         image, aspect="auto", cmap="gray_r", interpolation="nearest",
         extent=[t[0], t[-1], N_LEGS - 0.5, -0.5], origin="upper",
+        vmin=0, vmax=1,  # fixed 0/1 scale -- without this, imshow auto-normalizes from
+                         # the data's own min/max, so a trace where every leg is planted
+                         # (or every leg swings) the whole window -- a constant array --
+                         # collapses to normalized 0 and renders white regardless of
+                         # which state it actually was.
     )
     ax_gait.set_yticks(range(N_LEGS))
     ax_gait.set_yticklabels([LEG_NAMES[i] for i in DISPLAY_ORDER])

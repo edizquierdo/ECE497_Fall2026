@@ -171,15 +171,22 @@ exactly share `walker.py`'s interface:
 `hexapod_bridge.py` translates between them. The sweep half of this
 mapping is a direct correspondence (`sweep torque = fwd - bwd`,
 `sweep angle` extracted straight from the hexapod's observation as
-`walker.py`'s per-leg angle) — but the lift half still requires a real
-design choice: `walker.py`'s `foot` is a stance/swing signal its own
-physics interprets by zeroing body velocity when unsupported, never as
-an actual commanded torque, so turning `foot` into a lift-joint torque
-command every tick is an interpretation, not a given. The one used here
-(documented in the module docstring) is a reasonable starting point, not
-a validated answer. In testing, it does **not** reliably transfer forward
-locomotion — that's expected, and is the actual substance of Part 4's
-assignment (see below), not a bug to fix before you can start.
+`walker.py`'s per-leg angle). The lift half needs more care: `walker.py`'s
+`foot` is a stance/swing signal its own physics interprets by zeroing
+body velocity when unsupported, never as an actual commanded torque, so
+turning `foot` into a lift-joint torque command every tick takes a real
+design decision. `hexapod_bridge.py` uses a **closed-loop PD controller**
+for this: it reads the lift joint's actual current angle and velocity
+from the hexapod's own sensors and drives it toward a target angle (down
+while planted, up while swinging), tapering the torque off as the joint
+arrives instead of pushing at a constant rate regardless of where it
+already is — the same idea as a servo holding a position.
+
+Even so, transfer is not guaranteed. A genome evolved on `walker.py`'s
+idealized physics may still drag a leg, slip, or fail to support its own
+weight on the real body, because real contact dynamics, friction, and
+inertia are all things evolution never saw. Whether — and how well — a
+given genome transfers is itself worth investigating: see Part 4 below.
 
 **Watching it run:** `hexapod_bridge.py --render` opens MuJoCo's live
 interactive 3D viewer — but only works on a machine with a display (your
@@ -209,8 +216,7 @@ same set as `hexapod_bridge.py`, plus output/rendering options).
 | `hexapod.xml` | [Phase C] MuJoCo model (MJCF) of a real six-legged body with contact dynamics, friction, and inertia |
 | `hexapod_env.py` | [Phase C] Gymnasium `MujocoEnv` wrapper around `hexapod.xml` |
 | `hexapod_bridge.py` | [Phase C] Translates a `walker.py`-evolved genome's action space onto the real hexapod's actuators, and runs it there |
-| `hexapod_torque_sweep.py` | [Phase C] Sweeps `--torque_scale` over several values (with repetitions per value) for a given genome, and plots average displacement (direction-agnostic distance from start) vs. torque scale |
-| `hexapod_timescale_sweep.py` | [Phase C, ctrnn only] Sweeps `--timescale` (the CTRNN's internal clock rate relative to the real hexapod's physical clock) over several values, and plots average displacement (direction-agnostic distance from start) vs. timescale |
+| `hexapod_lift_sweep.py` | [Phase C] Sweeps `--lift_gain` and `--timescale` together over a grid of values (with repetitions per cell) for a given genome, and plots average displacement (direction-agnostic distance from start) as a heatmap over the two parameters |
 | `requirements.txt` | Pinned dependency versions for this project's virtual environment (Phases A/B plus optional Phase C extras) |
 | `README.md` | This documentation |
 
@@ -444,8 +450,9 @@ python hexapod_bridge.py --controller ctrnn --genome ctrnn_best.npy --duration 5
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--controller`, `--genome`, `--hidden`, `--topology`, `--module_size`, `--interneurons`, `--mode` | Same meaning as in `sim.py` — must match how the genome was evolved | see `sim.py` |
-| `--torque_scale` | Global scale on the mapped sweep/lift torques. `walker.py`'s action magnitudes were never tuned against real actuator gains, so this is worth sweeping rather than assuming 1.0 is right | `1.0` |
-| `--timescale` | [`--controller ctrnn` only] Scales the CTRNN's own internal clock relative to the real hexapod's physical clock (`dt` passed to `act()` = `TS * timescale`). The genome evolved with its internal clock and `walker.py`'s body advancing in lockstep at `TS=0.1s`/tick, but `hexapod_env.py`'s real physical step is only `0.05s` — so the default (`1.0`) may run the CPG's rhythm too fast relative to how far the real body actually moves per control step. See `hexapod_timescale_sweep.py` | `1.0` |
+| `--torque_scale` | Scale on the mapped **sweep** torque. `walker.py`'s action magnitudes were never tuned against real actuator gains, so this is worth sweeping rather than assuming 1.0 is right | `1.0` |
+| `--timescale` | [`--controller ctrnn` only] Scales the CTRNN's own internal clock relative to the real hexapod's physical clock (`dt` passed to `act()` = `TS * timescale`). The genome evolved with its internal clock and `walker.py`'s body advancing in lockstep at `TS=0.1s`/tick, but `hexapod_env.py`'s real physical step is only `0.05s`, so the two clocks don't automatically line up — worth exploring together with `--lift_gain` (see `hexapod_lift_sweep.py`) rather than assuming the default is right | `4.0` |
+| `--lift_gain` | Multiplier on the closed-loop PD lift controller's gains (see `hexapod_bridge.py`'s module docstring), independent of `--torque_scale` (which scales sweep only) — worth exploring together with `--timescale` | `2.0` |
 | `--duration` | Simulated seconds to run — same convention as `walker.py`/`sim.py`/`evolve.py`'s `--duration`. Not a raw step count: `hexapod_env.py`'s per-step `dt` is 0.05s (MuJoCo `timestep=0.01` × `frame_skip=5`), vs. `walker.py`'s `TS` of 0.1s, so steps actually run = `duration / 0.05` | `50.0` |
 | `--render` | Open an interactive MuJoCo viewer window (only works with a display, not headless servers — see `hexapod_render.py` below for headless machines) | off |
 
@@ -467,62 +474,41 @@ python hexapod_render.py --controller feedforward --hidden 16 --genome ff_best.n
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--controller`, `--genome`, `--hidden`, `--topology`, `--module_size`, `--interneurons`, `--mode`, `--torque_scale`, `--timescale`, `--seed` | Same meaning as `hexapod_bridge.py` | see above |
+| `--controller`, `--genome`, `--hidden`, `--topology`, `--module_size`, `--interneurons`, `--mode`, `--torque_scale`, `--timescale`, `--lift_gain`, `--seed` | Same meaning as `hexapod_bridge.py` | see above |
 | `--duration` | Simulated seconds to render — same convention as `hexapod_bridge.py`'s `--duration` (steps rendered = `duration / 0.05`) | `15.0` |
 | `--out` | Output video path (`.mp4` recommended; `.gif` also works) | `hexapod.mp4` |
 | `--width`, `--height` | Frame resolution in pixels | `640`, `480` |
 | `--fps` | Playback frame rate of the output video | `20` |
 
-**Sweeping `--torque_scale`:** `torque_scale` is currently the only
-CLI-exposed parameter of the sweep/lift torque mapping (see
-`hexapod_bridge.py`'s module docstring), so it's the natural first thing
-to search over before concluding the mapping itself is the bottleneck.
-`hexapod_torque_sweep.py` runs several repetitions per value (different
-seeds, so a single lucky/unlucky run doesn't skew the result) and plots
-average displacement (direction-agnostic distance from start) against
-torque scale:
+**Sweeping `--lift_gain` and `--timescale` together:** both parameters
+affect the same thing from different directions. `--lift_gain` sets how
+strongly the closed-loop lift controller pulls each leg toward its target
+angle; `--timescale` sets how fast the CTRNN's internal clock runs
+relative to the real body's physical response. If the lift gain is too
+weak, the leg never reaches its target in time regardless of timing; if
+the timing is off, even a well-tuned lift controller is asked to reach
+its target on the wrong schedule. Because they interact, it's worth
+searching over both together rather than one at a time — `torque_scale`
+(sweep torque only) is left fixed. `hexapod_lift_sweep.py` runs several
+repetitions per (lift_gain, timescale) combination (different seeds, so a
+single lucky/unlucky run doesn't skew the result) and plots average
+displacement (direction-agnostic distance from start) as a heatmap:
 
 ```bash
-python hexapod_torque_sweep.py --controller feedforward --hidden 16 --genome ff_best.npy \
-    --torque_scales 0.25 0.5 1.0 2.0 4.0 --reps 5 --out torque_sweep.png
+python hexapod_lift_sweep.py --controller ctrnn --genome ctrnn_best.npy \
+    --lift_gains 1.0 1.5 2.0 2.5 3.0 --timescales 1.0 2.0 4.0 8.0 16.0 \
+    --reps 5 --out lift_sweep.png
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--controller`, `--genome`, `--hidden`, `--topology`, `--module_size`, `--interneurons`, `--mode`, `--duration` | Same meaning as `hexapod_bridge.py` (`--genome` is required here) | see above |
-| `--torque_scales` | List of torque-scale values to try | `0.25 0.5 1.0 2.0 4.0` |
-| `--reps` | Repetitions per torque-scale value, each a different seed | `5` |
-| `--seed` | Base seed — repetition `r` uses `seed + r`, the same across every torque scale, so the comparison is fair | `0` |
-| `--out` | Output plot path | `torque_sweep.png` |
-| `--data_out` | Optional `.npz` path to also save raw per-rep results | `None` |
-
-**Sweeping `--timescale`:** if the legs' motion looks right (correct
-relative timing/coordination) but the hexapod just isn't covering ground
-the way it did in `sim.py`, the CTRNN's internal clock and the real
-body's physical clock are worth suspecting before the controller itself:
-the genome evolved with one `act()` call advancing both the CTRNN's
-internal state *and* `walker.py`'s body by the same `TS=0.1s` tick — but
-one `hexapod_bridge.py` control step only advances the real body's
-physical clock by `0.05s` (`hexapod_env.py`'s `dt`). `--timescale`
-rescales the CTRNN's own clock (`dt = TS * timescale`) so you can search
-for the ratio that best compensates, the same way `--torque_scale`
-compensates for the untuned actuator gains. `hexapod_timescale_sweep.py`
-runs the same repeated-reps-per-value sweep as the torque script:
-
-```bash
-python hexapod_timescale_sweep.py --genome ctrnn_best.npy \
-    --timescales 0.25 0.5 1.0 2.0 4.0 --reps 5 --out timescale_sweep.png
-```
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--genome`, `--topology`, `--module_size`, `--interneurons`, `--mode`, `--duration` | Same meaning as `hexapod_bridge.py` (`--genome` is required here; CTRNN-only, no `--controller` flag) | see above |
-| `--torque_scale` | Held fixed across the sweep — run `hexapod_torque_sweep.py` first if you don't already know a good value | `1.0` |
-| `--timescales` | List of timescale values to try | `0.25 0.5 1.0 2.0 4.0` |
-| `--reps` | Repetitions per timescale value, each a different seed | `5` |
-| `--seed` | Base seed — repetition `r` uses `seed + r`, the same across every timescale, so the comparison is fair | `0` |
-| `--out` | Output plot path | `timescale_sweep.png` |
-| `--data_out` | Optional `.npz` path to also save raw per-rep results | `None` |
+| `--controller`, `--genome`, `--hidden`, `--topology`, `--module_size`, `--interneurons`, `--mode`, `--torque_scale`, `--duration` | Same meaning as `hexapod_bridge.py` (`--genome` is required here) | see above |
+| `--lift_gains` | List of lift_gain values to try | `1.0 1.5 2.0 2.5 3.0` |
+| `--timescales` | List of timescale values to try (ignored, held at `1.0`, for `--controller feedforward`) | `1.0 2.0 4.0 8.0 16.0` |
+| `--reps` | Repetitions per (lift_gain, timescale) combination, each a different seed | `5` |
+| `--seed` | Base seed — repetition `r` uses `seed + r`, the same across every combination, so the comparison is fair | `0` |
+| `--out` | Output plot path | `lift_sweep.png` |
+| `--data_out` | Optional `.npz` path to also save raw per-cell/per-rep results | `None` |
 
 ---
 
@@ -859,21 +845,14 @@ Take your best feedforward controller and your best CTRNN controller from
 Part 3, and run each through `hexapod_bridge.py` against the real MuJoCo
 hexapod.
 
-1. Run both controllers against `hexapod_env.py` using the provided
-   action-space mapping. Report whether each stays upright, and its total
-   displacement from its start position.
-2. Sweep `--torque_scale` (try at least 3-4 values spanning at least a
-   4x range) for your better-transferring controller. Does scale alone
-   recover forward progress, or is the mapping itself the bottleneck?
-3. **Propose and implement at least one concrete change** to
-   `walker_action_to_hexapod_action()` in `hexapod_bridge.py` — the
-   `lift`-torque interpretation of `foot` is the piece that's still an
-   open design choice (see the module docstring), so that's the natural
-   place to experiment: try different lift-torque magnitudes or timing,
-   or a PD controller toward a target lift angle instead of an open-loop
-   torque. Re-run and report whether it helped.
-4. Generate a video with `hexapod_render.py` of your best-transferring
-   run, before and after your Part 4.3 change.
+1. Run both controllers against `hexapod_env.py`. Report whether each
+   stays upright, and its total displacement from its start position.
+2. Sweep `--lift_gain` and `--timescale` together with `hexapod_lift_sweep.py`
+   (try at least 3-4 values of each) for your better-transferring
+   controller. Is there a clear sweet spot, or a broad region that works
+   about equally well? Does one parameter matter more than the other?
+3. Generate a video with `hexapod_render.py` of your best-transferring
+   run.
 
 Questions:
 - What, concretely, does `walker.py`'s physics leave out that
@@ -888,9 +867,11 @@ Questions:
   that tell you about how much of the gap is really about leg *geometry*
   versus how much is genuinely about idealized-vs-real *physics*?
 - The `lift` torque (from `foot`) is still an interpretation, unlike
-  `sweep`. Does that asymmetry show up in what you observe — e.g. does
-  the walker's sweep timing look intact while its stance/swing footing
-  looks wrong?
+  `sweep`'s direct correspondence — even a closed-loop controller reading
+  real sensor state is still translating a signal `walker.py` itself
+  never treated as a torque. Does that asymmetry show up in what you
+  observe — e.g. does the walker's sweep timing look intact while its
+  stance/swing footing looks off?
 - This is real sim-to-(more-)real transfer, one level removed from actual
   hardware. What would the next gap be, going from `hexapod_env.py` to an
   actual physical hexapod robot?
@@ -982,9 +963,8 @@ is incomplete.
 
 - Results (upright/fell, final displacement) for your best feedforward
   and CTRNN controllers run against the real hexapod, both before and
-  after your `--torque_scale` sweep.
-- A description of the change you made to the action-space bridge, and
-  whether it helped.
+  after your `--lift_gain`/`--timescale` sweep.
+- The video generated with `hexapod_render.py`.
 - Answers to the guiding questions from Part 4.
 
 **Part 5 — Quantitative Analysis**

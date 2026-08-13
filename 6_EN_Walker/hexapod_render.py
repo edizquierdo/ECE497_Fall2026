@@ -30,7 +30,9 @@ import numpy as np
 import torch
 
 from hexapod_env import HexapodEnv
-from hexapod_bridge import hexapod_obs_to_walker_obs, walker_action_to_hexapod_action
+from hexapod_bridge import (
+    hexapod_obs_to_walker_obs, walker_action_to_hexapod_action, LIFT_GAIN_DEFAULT,
+)
 from neural_controller import WalkerController, WalkerCTRNNController, SM_DEFAULT
 from walker import OBS_SIZE, TS
 
@@ -53,12 +55,15 @@ def parse_args():
                          help="[ctrnn only] sensor condition to run under: cpg = no sensory "
                               "input, rpg = live leg-angle feedback, mpg = alternate by rep")
     parser.add_argument("--torque_scale", type=float, default=1.0,
-                         help="Global scale on the mapped sweep/lift torques -- see "
-                              "hexapod_bridge.py's --torque_scale for why this is worth sweeping.")
-    parser.add_argument("--timescale", type=float, default=1.0,
+                         help="Scale on the mapped sweep torque -- see hexapod_bridge.py's "
+                              "--torque_scale for why this is worth sweeping.")
+    parser.add_argument("--timescale", type=float, default=4.0,
                          help="[ctrnn only] Same meaning as hexapod_bridge.py's --timescale -- "
                               "scales the CTRNN's internal clock relative to the real hexapod's "
                               "physical clock.")
+    parser.add_argument("--lift_gain", type=float, default=LIFT_GAIN_DEFAULT,
+                         help="Same meaning as hexapod_bridge.py's --lift_gain -- multiplier on "
+                              "the PD lift controller's gains, independent of --torque_scale.")
     parser.add_argument("--duration", type=float, default=15.0,
                          help="Simulated seconds to render, same convention as walker.py/sim.py/"
                               "evolve.py/hexapod_bridge.py's --duration. Steps rendered = "
@@ -112,7 +117,9 @@ def main():
         else:
             action18 = model.act(walker_obs, sensors_on=sensors_on, dt=TS * args.timescale)
 
-        hexapod_action = walker_action_to_hexapod_action(action18, torque_scale=args.torque_scale)
+        hexapod_action = walker_action_to_hexapod_action(
+            action18, obs, torque_scale=args.torque_scale, lift_gain=args.lift_gain
+        )
         obs, reward, terminated, truncated, info = env.step(hexapod_action)
         frames.append(env.render())
         if terminated:

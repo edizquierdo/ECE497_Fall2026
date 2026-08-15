@@ -140,9 +140,9 @@ deactivate
 
 If you'd rather use `conda`, that's fine too — just create an environment with a matching Python version and run the same `pip install -r requirements.txt` inside it.
 
-**Note:** The neural controller uses a Tanh activation in the hidden layer and
-linear outputs (logits) for discrete action selection. The simulation in
-`sim.py` is consistent with `evolve.py`.
+**Note:** The neural controller uses a configurable activation (`tanh` by
+default) in the hidden layer(s) and linear outputs (logits) for discrete
+action selection. The simulation in `sim.py` is consistent with `evolve.py`.
 
 ---
 
@@ -184,6 +184,8 @@ Useful command-line options:
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--hidden` | Number of hidden neurons | `8` |
+| `--hidden_sizes` | List of hidden layer sizes, e.g. `--hidden_sizes 16 16` for two 16-neuron hidden layers. Overrides `--hidden` when given | `None` |
+| `--activation` | Activation function on the hidden layer(s): `tanh`, `relu`, or `sigmoid` | `tanh` |
 | `--popsize` | Population size | `80` |
 | `--gens` | Number of generations | `40` |
 | `--episodes_per_eval` | Episodes to average per fitness evaluation | `5` |
@@ -191,19 +193,28 @@ Useful command-line options:
 | `--mut_stdev` | Gaussian mutation standard deviation | `0.4` |
 | `--tournament_size` | Tournament size for SBX crossover | `3` |
 | `--eta` | Distribution index for SBX crossover | `20` |
+| `--no-crossover` | Disable SBX crossover, running a mutation-only GA | crossover on |
+| `--init_bounds LOW HIGH` | Initial genome sampling bounds | `-1.0 1.0` |
 | `--no-elitism` | Disable elitism | elitism on |
 | `--vizperf` | Visualize fitness over generations | off |
 | `--verbose` | Print progress to console | off |
 | `--seed` | Random seed for reproducibility | `None` |
 | `--output FILE` | File path to save best genome | `None` |
 | `--fitness_output FILE` | Save per-generation best/avg/worst fitness to this `.npz` file (keys `best`/`avg`/`worst`), so you can reload and compare fitness curves across configurations without re-running evolution | `None` |
-| `--seed_genome FILE` | Seed the initial population around a genome saved by a previous `--output` run (must match the current `--hidden`) instead of starting from scratch — one exact copy plus the rest perturbed by `--seed_noise` | `None` |
+| `--seed_genome FILE` | Seed the initial population around a genome saved by a previous `--output` run (must match the current `--hidden`/`--hidden_sizes`) instead of starting from scratch — one exact copy plus the rest perturbed by `--seed_noise` | `None` |
 | `--seed_noise` | Stdev of the Gaussian perturbation applied to `--seed_genome` copies | `0.05` |
 
 For example:
 
 ```bash
 python evolve.py --hidden 16 --popsize 100 --gens 50 --vizperf
+```
+
+or, trying a multi-layer network with a different activation, and crossover off:
+
+```bash
+python evolve.py --hidden_sizes 16 16 --activation relu --vizperf
+python evolve.py --no-crossover --vizperf
 ```
 
 ---
@@ -228,8 +239,8 @@ To watch the controller balance the pole live, add `--render`:
 python sim.py --genome best_genome.npy --render --reps 3
 ```
 
-**Important:** `--hidden` must match the value used when the genome was
-evolved. `evolve.py` prints a reminder of the exact `--hidden` (and
+**Important:** `--hidden`/`--hidden_sizes`/`--activation` must match the values used when the
+genome was evolved. `evolve.py` prints a reminder of the exact architecture (and
 `--duration`) to use when it saves a genome. This isn't just for correctness
 of results — if the value doesn't match, the genome will still load without
 any error and will produce a controller that looks evolved but behaves
@@ -247,6 +258,8 @@ Useful command-line options for `sim.py`:
 | `--duration` | Number of simulation steps (should match the duration used during evolution) | `500` |
 | `--reps` | Number of independent repetitions | `5` |
 | `--hidden` | Number of hidden neurons; must match the network used during evolution | `8` |
+| `--hidden_sizes` | List of hidden layer sizes, e.g. `--hidden_sizes 16 16`. Overrides `--hidden` when given. Must match the architecture the genome was evolved with | `None` |
+| `--activation` | Activation function on the hidden layer(s); must match what the genome was evolved with | `tanh` |
 | `--viztraces` | Plot pole angle and cart position over time | off |
 | `--scores` | Print average reward per repetition | off |
 | `--render` | Render episodes live with Gymnasium's human renderer | off |
@@ -341,7 +354,8 @@ stochastic rollouts. Higher values are better (more time balancing the pole).
 Answer these questions before running any experiments:
 
 - How many total parameters (weights + biases) does a network with 8 hidden
-  neurons have? Count them by layer.
+  neurons have? Count them by layer. Then check your count against
+  `genome_size(hidden_size=8)` in `neural_controller.py` — do they agree?
 - Why is Tanh used for the hidden layer but not for outputs?
 - What would happen if we used ReLU instead of Tanh in the hidden layer?
 
@@ -352,6 +366,13 @@ Evolve controllers with different hidden sizes:
 1. Run evolution with 4, 8, 16, and 32 hidden neurons
 2. Compare final fitness values across architectures
 3. How does genome size affect evolutionary dynamics?
+
+**Note:** at the defaults above (`--popsize 80 --gens 40`), evolution typically reaches the
+maximum possible score (500) for *every* architecture within the first few generations — final
+fitness alone won't distinguish hidden sizes from each other. If that's what you find, don't
+stop there: the real signal is *how fast* each architecture gets to 500, so build your
+comparison around convergence generation instead, running a few seeds per architecture since any
+single run is noisy.
 
 Questions to consider:
 - Does a larger network always achieve higher fitness?
@@ -376,6 +397,14 @@ Collect data from multiple independent runs:
 1. Run evolution with the same parameters 5 times
 2. Record best fitness, convergence generation, and genome size
 3. Analyze variance across runs
+
+**Note:** the second guiding question below ("how does population size affect success rate?")
+has no real answer at the default `--gens 40` — evolution succeeds regardless of population size
+once it's given that much budget, so a straight 5-run sweep at the default settings will show
+100% success everywhere and nothing to compare. To make this question answerable, also run the
+same population-size sweep under a **much tighter generation budget** (e.g. `--gens 5`), where
+population size actually starts to determine whether evolution finds a solution at all, and
+report both regimes.
 
 Questions:
 - Does evolution always find high-fitness solutions?
@@ -412,17 +441,13 @@ physics rather than mapping it to one of the two discrete actions). Compare
 evolvability and resulting behavior against the discrete controller from
 Part 2.
 
-**3. Architecture depth and activation functions.** `NeuralController` is
-currently a single hidden layer, `4 → hidden → 2`, with Tanh in the hidden
-layer. Try modifying the architecture itself: add a second hidden layer
-(e.g. `4 → hidden → hidden → 2`) and compare it against a single-layer
-network of similar total parameter count — does the deeper network evolve
-as easily, or does it struggle more? Separately (or additionally), try
-swapping Tanh for another hidden-layer activation (e.g. ReLU or Sigmoid).
-You don't need to change anything outside `neural_controller.py` —
-`evolve.py` computes genome length directly from whatever architecture
-`NeuralController` defines, so a modified network will evolve and load
-correctly as-is.
+**3. Architecture depth and activation functions.** `NeuralController` supports both of these
+already as CLI flags — no code changes needed, the work is in designing a fair comparison and
+interpreting it. Add a second hidden layer with `--hidden_sizes h h` and compare it against a
+single-layer network of *similar total parameter count* (not matching neuron counts — the
+hidden-to-hidden connection alone costs `h²` extra weights) — does the deeper network evolve as
+easily, or does it struggle more? Separately (or additionally), try `--activation relu` or
+`--activation sigmoid` in place of the default `tanh`.
 
 **4. Robustness and generalization.** Evolve a controller under the default
 termination limits (24° pole angle, ±2.4 cart position), then — without
@@ -465,7 +490,7 @@ Organize the body of your report into one section per assignment part. Each sect
 **Part 2 — Evolve and Analyze**
 
 - Fitness-over-generations plots (`--vizperf`) for hidden sizes 4, 8, 16, and 32, run with matched settings otherwise.
-- A summary plot or table comparing final best fitness across the four architectures.
+- A summary plot or table comparing convergence generation (not just final fitness, which likely saturates at 500 for every architecture) across the four architectures.
 - Answers to the guiding questions from Part 2, supported directly by your results (does a larger network always win, is there a point of diminishing returns, how does genome size relate to convergence speed).
 
 **Part 3 — Behavioral Analysis**
@@ -478,6 +503,7 @@ Organize the body of your report into one section per assignment part. Each sect
 
 - Results from 5 independent evolutionary runs with the same parameters: best fitness, convergence generation, and genome size for each.
 - A plot or discussion of the variance across runs.
+- The supplementary short-generation-budget population-size sweep (see the Part 4 note above), since the default-budget sweep alone won't show population size affecting anything.
 - Answers to the guiding questions from Part 4 (does evolution always succeed, effect of population size on success rate, typical shape of the convergence curve).
 
 **Optional / Advanced Challenge** *(if attempted)*: a section naming which of the four directions you chose (or your own idea), what you changed, your results (with supporting figures), and your interpretation. Omit this section if you didn't attempt a challenge.

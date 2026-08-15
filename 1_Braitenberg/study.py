@@ -21,7 +21,10 @@ from sim import run_simulation
 # Used whenever the user does not explicitly pass --min / --max.
 DEFAULT_RANGES = {
     "noise":        (0.0, 1.0),
-    "turn_gain":    (0.0, 1.0),
+    "turn_gain":    (0.0, 40.0),   # wide enough to show BOTH regimes: fitness improves with
+                                    # diminishing returns out past turn_gain=20, then breaks down
+                                    # (a single step can overshoot by full rotations) -- a range
+                                    # capped at 1.0 only ever shows the first half of that story.
     "distance":     (2.0, 20.0),   # distance=0 makes the sensor gain (1/distance) blow up
     "angle_offset": (0.0, np.pi),  # sensors range from facing forward (0) to facing backward (pi)
 }
@@ -78,7 +81,20 @@ def parse_args():
         "--seed",
         type=int,
         default=None,
-        help="Random seed for reproducibility"
+        # Note: with --seed set, np.random.seed(seed) is called fresh at
+        # the start of every point in the sweep, so every parameter value
+        # starts from the same RNG state (paired comparison / reduced
+        # variance across the sweep) rather than being fully independent.
+        help="Random seed for reproducibility (see note above re: how this "
+             "affects independence between sweep points)"
+    )
+    parser.add_argument(
+        "--wiring",
+        type=str,
+        default="crossed",
+        choices=["crossed", "direct"],
+        help="Sensor-to-motor wiring scheme, held fixed across the sweep (default: crossed). "
+             "Only has an effect once you implement Vehicle.think()'s OPTIONAL runtime switch."
     )
     parser.add_argument(
         "--verbose",
@@ -92,7 +108,16 @@ def run_study(param_name, param_values, verbose=False, **sim_kwargs):
     """Run simulation for each parameter value and collect final scores.
 
     Args:
-        param_name:   Name of the parameter to vary.
+        param_name:   Name of the parameter to vary. Can be ANY keyword
+                       argument accepted by sim.run_simulation() -- this
+                       function itself doesn't restrict it to the fixed
+                       list in --param's CLI choices above. That CLI
+                       restriction exists only because DEFAULT_RANGES needs
+                       a known range to fall back on; if you add a new
+                       parameter to run_simulation() (e.g. for one of the
+                       optional challenges) you can sweep it by calling
+                       run_study() directly with your own param_values,
+                       without touching this file's CLI at all.
         param_values: List of parameter values to test.
         verbose:      Print progress information if True.
         **sim_kwargs: Other simulation parameters (reps, duration, etc.).
@@ -132,6 +157,7 @@ def main():
         "reps":     args.reps,
         "duration": args.duration,
         "seed":     args.seed,
+        "wiring":   args.wiring,
     }
 
     # All supported parameters happen to share the same name in both the CLI

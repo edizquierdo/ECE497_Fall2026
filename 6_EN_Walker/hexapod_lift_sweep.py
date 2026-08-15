@@ -47,6 +47,8 @@ def parse_args():
                          help="Genome evolved by evolve.py against walker.py.")
     parser.add_argument("--hidden", type=int, nargs="+", default=[64],
                          help="[feedforward only] must match what --genome was evolved with")
+    parser.add_argument("--activation", choices=["tanh", "relu", "sigmoid"], default="tanh",
+                         help="[feedforward only] must match what --genome was evolved with")
     parser.add_argument("--topology", choices=["modular", "fully_connected"], default="modular",
                          help="[ctrnn only] must match what --genome was evolved with")
     parser.add_argument("--module_size", type=int, default=SM_DEFAULT,
@@ -82,7 +84,7 @@ def parse_args():
 
 def run_sweep(
     controller, genome_path, hidden_sizes, topology, module_size, n_interneurons, mode,
-    torque_scale, duration, lift_gains, timescales, reps, base_seed,
+    torque_scale, duration, lift_gains, timescales, reps, base_seed, activation="tanh",
 ):
     """Returns:
         displacement: (len(timescales), len(lift_gains), reps) total straight-line distance
@@ -100,6 +102,7 @@ def run_sweep(
                     controller=controller,
                     genome_path=genome_path,
                     hidden_sizes=hidden_sizes,
+                    activation=activation,
                     topology=topology,
                     module_size=module_size,
                     n_interneurons=n_interneurons,
@@ -130,6 +133,7 @@ def main():
         controller=args.controller,
         genome_path=args.genome,
         hidden_sizes=hidden_sizes,
+        activation=args.activation,
         topology=args.topology,
         module_size=args.module_size,
         n_interneurons=args.interneurons,

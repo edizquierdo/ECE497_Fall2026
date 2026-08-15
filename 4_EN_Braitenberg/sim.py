@@ -50,6 +50,23 @@ def parse_args():
         help="Number of hidden neurons in network (default: 8)",
     )
     parser.add_argument(
+        "--hidden_sizes",
+        type=int,
+        nargs="+",
+        default=None,
+        help="List of hidden layer sizes, e.g. --hidden_sizes 16 16. Overrides "
+             "--hidden when given. Must match the architecture the genome was "
+             "evolved with. (default: None, i.e. use the single --hidden layer)",
+    )
+    parser.add_argument(
+        "--activation",
+        type=str,
+        default="tanh",
+        choices=["tanh", "relu", "sigmoid"],
+        help="Activation function applied on hidden layer(s); must match what the "
+             "genome was evolved with. (default: tanh)",
+    )
+    parser.add_argument(
         "--angle_offset",
         type=float,
         default=np.pi / 2,
@@ -103,6 +120,8 @@ def run_simulation(
     viztraces=False,
     vizdist=False,
     seed=None,
+    hidden_sizes=None,
+    activation="tanh",
 ):
     """
     Run the neural vehicle simulation.
@@ -128,7 +147,7 @@ def run_simulation(
         torch.manual_seed(seed)
 
     # Create controller
-    controller = NeuralController(hidden_size=hidden_size)
+    controller = NeuralController(hidden_size=hidden_size, hidden_sizes=hidden_sizes, activation=activation)
 
     if genome_path is not None:
         # Load evolved genome
@@ -235,6 +254,8 @@ def main():
     final_avg = run_simulation(
         genome_path=args.genome,
         hidden_size=args.hidden,
+        hidden_sizes=args.hidden_sizes,
+        activation=args.activation,
         duration=args.duration,
         reps=args.reps,
         distance=args.distance,

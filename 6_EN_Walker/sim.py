@@ -39,6 +39,8 @@ def parse_args():
     # -- feedforward-only --
     parser.add_argument("--hidden", type=int, nargs="+", default=[64],
                          help="[feedforward only] must match what you evolved with")
+    parser.add_argument("--activation", choices=["tanh", "relu", "sigmoid"], default="tanh",
+                         help="[feedforward only] must match what you evolved with")
 
     # -- ctrnn-only --
     parser.add_argument("--topology", choices=["modular", "fully_connected"], default="modular",
@@ -67,11 +69,11 @@ def parse_args():
     return parser.parse_args()
 
 
-def _build_controller(controller, hidden_sizes, topology, module_size, n_interneurons, genome_path):
+def _build_controller(controller, hidden_sizes, topology, module_size, n_interneurons, genome_path, activation="tanh"):
     """Construct and load a controller of the requested type. Returns the
     model, ready for act() calls."""
     if controller == "feedforward":
-        model = WalkerController(hidden_sizes=hidden_sizes, obs_size=OBS_SIZE)
+        model = WalkerController(hidden_sizes=hidden_sizes, obs_size=OBS_SIZE, activation=activation)
         if genome_path is not None:
             genome_data = np.load(genome_path)
             genome = torch.tensor(genome_data, dtype=torch.float32)
@@ -80,7 +82,8 @@ def _build_controller(controller, hidden_sizes, topology, module_size, n_interne
                 raise ValueError(
                     f"Genome at '{genome_path}' has {genome.numel()} parameters, but "
                     f"--hidden {hidden_sizes} expects {expected_size}. Make sure --hidden "
-                    f"matches the settings used when this genome was evolved."
+                    f"(and --activation, though it doesn't change parameter count) matches "
+                    f"the settings used when this genome was evolved."
                 )
             torch.nn.utils.vector_to_parameters(genome, model.parameters())
             print(f"Loaded genome from: {genome_path}")
@@ -124,6 +127,7 @@ def run_simulation(
     controller="feedforward",
     genome_path=None,
     hidden_sizes=64,
+    activation="tanh",
     topology="modular",
     module_size=SM_DEFAULT,
     n_interneurons=0,
@@ -143,7 +147,7 @@ def run_simulation(
         np.random.seed(seed)
         torch.manual_seed(seed)
 
-    model = _build_controller(controller, hidden_sizes, topology, module_size, n_interneurons, genome_path)
+    model = _build_controller(controller, hidden_sizes, topology, module_size, n_interneurons, genome_path, activation=activation)
 
     if viztraces:
         n_ticks = int(round(duration / 0.1))
@@ -196,6 +200,7 @@ def write_trace(
     controller="feedforward",
     genome_path=None,
     hidden_sizes=64,
+    activation="tanh",
     topology="modular",
     module_size=SM_DEFAULT,
     n_interneurons=0,
@@ -213,7 +218,7 @@ def write_trace(
         np.random.seed(seed)
         torch.manual_seed(seed)
 
-    model = _build_controller(controller, hidden_sizes, topology, module_size, n_interneurons, genome_path)
+    model = _build_controller(controller, hidden_sizes, topology, module_size, n_interneurons, genome_path, activation=activation)
 
     env = WalkerEnv(duration=duration)
     obs, _ = env.reset(seed=seed)
@@ -259,6 +264,7 @@ def main():
         controller=args.controller,
         genome_path=args.genome,
         hidden_sizes=hidden_sizes,
+        activation=args.activation,
         topology=args.topology,
         module_size=args.module_size,
         n_interneurons=args.interneurons,

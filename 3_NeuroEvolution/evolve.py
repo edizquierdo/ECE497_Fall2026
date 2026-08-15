@@ -17,12 +17,22 @@ logging.getLogger("evotorch").setLevel(logging.WARNING)
 # ─────────────────────────────────────────────────────────────
 
 class XORNet(nn.Module):
-    """A configurable feedforward network: 2 inputs → hidden → 1 output.
+    """A configurable feedforward network: 2 inputs → hidden layer(s) → 1 output.
 
     Args:
-        hidden:     Number of neurons in the single hidden layer.
-        activation: Non-linearity to apply after the hidden layer.
-                    One of 'tanh', 'sigmoid', or 'relu'.
+        hidden:       Number of neurons in the single hidden layer (used only
+                      when `hidden_sizes` is not given).
+        activation:   Non-linearity to apply after each hidden layer.
+                      One of 'tanh', 'sigmoid', or 'relu'.
+        hidden_sizes: Optional list of hidden-layer sizes, e.g. [4, 4] for
+                      two hidden layers of 4 neurons each. When given,
+                      overrides `hidden`. Defaults to None, which is
+                      equivalent to `hidden_sizes=[hidden]` (today's
+                      single-hidden-layer architecture, unchanged). Pass
+                      `hidden_sizes=[]` for zero hidden layers — a bare
+                      linear classifier (Linear(2,1), no non-linearity) —
+                      to directly test Part 1's "why can't hidden=0 solve
+                      XOR" question empirically.
     """
 
     ACTIVATIONS = {
@@ -31,16 +41,23 @@ class XORNet(nn.Module):
         "relu":    nn.ReLU,
     }
 
-    def __init__(self, hidden=3, activation="tanh"):
+    def __init__(self, hidden=3, activation="tanh", hidden_sizes=None):
         super().__init__()
         if activation not in self.ACTIVATIONS:
             raise ValueError(f"Unknown activation '{activation}'. Choose from {list(self.ACTIVATIONS)}")
 
-        self.net = nn.Sequential(
-            nn.Linear(2, hidden),              # input layer  → hidden layer
-            self.ACTIVATIONS[activation](),    # non-linearity
-            nn.Linear(hidden, 1),              # hidden layer → output neuron
-        )
+        # Note: hidden_sizes=[] is intentionally valid (zero hidden layers,
+        # i.e. a linear classifier) — only None falls back to [hidden].
+        self.hidden_sizes = list(hidden_sizes) if hidden_sizes is not None else [hidden]
+
+        layers = []
+        in_dim = 2
+        for h in self.hidden_sizes:
+            layers.append(nn.Linear(in_dim, h))         # ... → hidden layer
+            layers.append(self.ACTIVATIONS[activation]())  # non-linearity
+            in_dim = h
+        layers.append(nn.Linear(in_dim, 1))              # hidden layer → output neuron
+        self.net = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.net(x)
@@ -58,6 +75,19 @@ XOR_INPUTS = torch.tensor([
 ], dtype=torch.float32)
 
 XOR_SIGNS = torch.tensor([-1.0, 1.0, 1.0, -1.0])   # sign of correct output
+
+# Alternate boolean tasks over the same 4 corner points (Part 3 "change the
+# task" option). All share XOR_INPUTS; only the expected signs differ.
+AND_SIGNS  = torch.tensor([-1.0, -1.0, -1.0,  1.0])
+OR_SIGNS   = torch.tensor([-1.0,  1.0,  1.0,  1.0])
+XNOR_SIGNS = torch.tensor([ 1.0, -1.0, -1.0,  1.0])
+
+TASKS = {
+    "xor":  (XOR_INPUTS, XOR_SIGNS),
+    "and":  (XOR_INPUTS, AND_SIGNS),
+    "or":   (XOR_INPUTS, OR_SIGNS),
+    "xnor": (XOR_INPUTS, XNOR_SIGNS),
+}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -185,22 +215,56 @@ _ACTIVATION_FNS = {
 }
 
 
-def _genome_layout(hidden):
+def _genome_layout(hidden_sizes):
     """Sizes (in order) of each parameter block within a flat XORNet genome.
 
     Matches the order PyTorch's parameters_to_vector uses for
-    nn.Sequential(Linear(2, hidden), Activation, Linear(hidden, 1)):
-    W1 (hidden, 2), b1 (hidden,), W2 (1, hidden), b2 (1,).
+    nn.Sequential(Linear, Activation, Linear, Activation, ..., Linear):
+    W1, b1, W2, b2, ..., W_n, b_n, walking the full dimension chain
+    [2] + hidden_sizes + [1].
+
+    Args:
+        hidden_sizes: int (single hidden layer, today's behavior) or a
+                      list of ints (one or more hidden layers).
     """
-    return {
-        "w1": hidden * 2,
-        "b1": hidden,
-        "w2": hidden * 1,
-        "b2": 1,
-    }
+    if isinstance(hidden_sizes, int):
+        hidden_sizes = [hidden_sizes]
+    dims = [2] + list(hidden_sizes) + [1]
+    layout = {}
+    for i in range(len(dims) - 1):
+        in_dim, out_dim = dims[i], dims[i + 1]
+        layout[f"w{i + 1}"] = out_dim * in_dim
+        layout[f"b{i + 1}"] = out_dim
+    return layout
 
 
-def make_fitness_fn(hidden, activation, inputs=None, signs=None, device=None):
+def genome_size(hidden=None, hidden_sizes=None):
+    """Total genome length (weights + biases) for a given XORNet architecture.
+
+    Computed analytically from `_genome_layout` rather than instantiating a
+    throwaway `XORNet` just to count `p.numel()` over its parameters — the
+    layout is architecture-only information, so there's no need to build the
+    actual `nn.Module` to get its size.
+
+    Args:
+        hidden:       Number of neurons in the single hidden layer. Used only
+                      when `hidden_sizes` is not given.
+        hidden_sizes: Optional list of hidden-layer sizes, overriding `hidden`.
+
+    Returns:
+        Total number of weights + biases (int).
+    """
+    if hidden_sizes is None:
+        if hidden is None:
+            raise ValueError("genome_size: must supply either `hidden` or `hidden_sizes`")
+        hidden_sizes = [hidden]
+    else:
+        hidden_sizes = list(hidden_sizes)
+    return sum(_genome_layout(hidden_sizes).values())
+
+
+def make_fitness_fn(hidden=None, activation="tanh", inputs=None, signs=None,
+                     device=None, hidden_sizes=None, fitness_mode="sign"):
     """Return a *vectorized* fitness function for a batch of XORNet genomes.
 
     Instead of instantiating an nn.Module per genome (slow, and especially
@@ -210,26 +274,48 @@ def make_fitness_fn(hidden, activation, inputs=None, signs=None, device=None):
     population in one shot using batched matrix multiplication. This is what
     makes `--device cuda`/`mps` actually pay off — a single big batched
     matmul is what GPUs are good at; thousands of tiny per-genome nn.Module
-    calls are not.
-
-    Fitness is defined as the fraction of training examples classified
-    correctly (0.0 = none correct, 1.0 = all correct).
+    calls are not. Supports an arbitrary number of hidden layers (via
+    `hidden_sizes`) via a loop over layer boundaries, still with no
+    per-individual Python loop — each layer is one batched einsum over the
+    whole population.
 
     Args:
-        hidden:     Number of hidden neurons (must match genome length).
-        activation: Activation function name ('tanh', 'sigmoid', 'relu').
-        inputs:     Optional custom input tensor. If None, uses XOR_INPUTS.
-        signs:      Optional custom sign tensor. If None, uses XOR_SIGNS.
-        device:     Target execution device ('cpu', 'cuda', 'mps', etc.).
+        hidden:       Number of hidden neurons (single hidden layer). Used
+                      only when `hidden_sizes` is not given.
+        activation:   Activation function name ('tanh', 'sigmoid', 'relu').
+        inputs:       Optional custom input tensor. If None, uses XOR_INPUTS.
+        signs:        Optional custom sign tensor. If None, uses XOR_SIGNS.
+        device:       Target execution device ('cpu', 'cuda', 'mps', etc.).
+        hidden_sizes: Optional list of hidden-layer sizes. Overrides `hidden`
+                      when given; defaults to `[hidden]` otherwise (today's
+                      exact single-hidden-layer behavior).
+        fitness_mode: 'sign' (default) = fraction of points with the correct
+                      output sign, exactly today's behavior. 'mse' = smooth
+                      alternative: squash the output through tanh to (-1,1),
+                      compute mean squared error against the +-1 signs
+                      (range [0,4]), and return 1 - mse/4, clamped to [0,1]
+                      so 1.0 still means "perfect" (needed for
+                      run_neuroevolution's `best_fit >= 1.0` early-stop).
 
     Returns:
         A callable (genomes: Tensor[pop, n_genes]) -> Tensor[pop] suitable
         for EvoTorch's vectorized objective mode (Problem(..., vectorized=True)).
     """
+    if hidden_sizes is None:
+        if hidden is None:
+            raise ValueError("make_fitness_fn: must supply either `hidden` or `hidden_sizes`")
+        hidden_sizes = [hidden]
+    else:
+        hidden_sizes = list(hidden_sizes)
+
     if activation not in _ACTIVATION_FNS:
         raise ValueError(f"Unknown activation '{activation}'. Choose from {list(_ACTIVATION_FNS)}")
+    if fitness_mode not in ("sign", "mse"):
+        raise ValueError(f"Unknown fitness_mode '{fitness_mode}'. Choose from ('sign', 'mse')")
     act_fn = _ACTIVATION_FNS[activation]
-    layout = _genome_layout(hidden)
+    layout = _genome_layout(hidden_sizes)
+    dims = [2] + hidden_sizes + [1]
+    n_layers = len(dims) - 1
 
     # Use provided inputs/signs or fall back to default XOR data
     _inputs = inputs if inputs is not None else XOR_INPUTS
@@ -244,26 +330,35 @@ def make_fitness_fn(hidden, activation, inputs=None, signs=None, device=None):
         inputs_dev = _inputs.to(dev)   # (N, 2)
         signs_dev = _signs.to(dev)     # (N,)
         pop = genomes.shape[0]
+        N = inputs_dev.shape[0]
 
-        # Slice the flat genome into each parameter block, then reshape
-        # every block into its per-individual matrix/vector form.
+        # activ starts as the input batch, broadcast across the population
+        # dimension so every layer below uses one uniform einsum pattern
+        # regardless of how many hidden layers there are.
+        activ = inputs_dev.unsqueeze(0).expand(pop, N, dims[0])  # (pop, N, 2)
+
         offset = 0
-        w1 = genomes[:, offset:offset + layout["w1"]].view(pop, hidden, 2); offset += layout["w1"]
-        b1 = genomes[:, offset:offset + layout["b1"]].view(pop, hidden);    offset += layout["b1"]
-        w2 = genomes[:, offset:offset + layout["w2"]].view(pop, 1, hidden); offset += layout["w2"]
-        b2 = genomes[:, offset:offset + layout["b2"]].view(pop, 1);         offset += layout["b2"]
+        for i in range(1, n_layers + 1):
+            in_dim, out_dim = dims[i - 1], dims[i]
+            w = genomes[:, offset:offset + layout[f"w{i}"]].view(pop, out_dim, in_dim)
+            offset += layout[f"w{i}"]
+            b = genomes[:, offset:offset + layout[f"b{i}"]].view(pop, out_dim)
+            offset += layout[f"b{i}"]
 
-        # Hidden layer: for each individual p, hidden[p] = inputs @ W1[p]^T + b1[p]
-        # 'nk,phk->pnh': N inputs (k=2 features) times per-individual (h, k) weights
-        hidden_pre = torch.einsum("nk,phk->pnh", inputs_dev, w1) + b1.unsqueeze(1)  # (pop, N, hidden)
-        hidden_act = act_fn(hidden_pre)
+            # 'pnk,phk->pnh': per-individual (out_dim=h, in_dim=k) weights
+            # applied to per-individual, per-point (n) activations.
+            pre = torch.einsum("pnk,phk->pnh", activ, w) + b.unsqueeze(1)  # (pop, N, out_dim)
+            activ = act_fn(pre) if i < n_layers else pre  # no activation on the final (output) layer
 
-        # Output layer: output[p] = hidden_act[p] @ W2[p]^T + b2[p]
-        output = torch.einsum("pnh,poh->pno", hidden_act, w2) + b2.view(pop, 1, 1)  # (pop, N, 1)
-        output = output.squeeze(-1)  # (pop, N)
+        output = activ.squeeze(-1)  # (pop, N), since final out_dim == 1
 
-        correct = (output * signs_dev.unsqueeze(0) >= 0).float().sum(dim=1)  # (pop,)
-        return correct / inputs_dev.shape[0]  # normalised to [0, 1]
+        if fitness_mode == "sign":
+            correct = (output * signs_dev.unsqueeze(0) >= 0).float().sum(dim=1)  # (pop,)
+            return correct / N  # normalised to [0, 1]
+        else:  # "mse"
+            pred = torch.tanh(output)                                       # squash to (-1, 1)
+            mse = ((pred - signs_dev.unsqueeze(0)) ** 2).mean(dim=1)         # (pop,), in [0, 4]
+            return (1.0 - mse / 4.0).clamp(0.0, 1.0)
 
     return fitness_fn
 
@@ -319,6 +414,23 @@ def parse_args():
                              "copies that fill out the rest of the initial population (one "
                              "individual is kept as an exact, unperturbed copy of the seed). "
                              "Ignored if --seed_genome isn't given.")
+    parser.add_argument("--hidden_sizes", type=int, nargs="+", default=None,
+                        help="List of hidden layer sizes, e.g. --hidden_sizes 4 4 for two "
+                             "hidden layers of 4 neurons each. Overrides --hidden when given "
+                             "(default: None, meaning a single hidden layer of size --hidden).")
+    parser.add_argument("--fitness_mode", type=str, default="sign", choices=["sign", "mse"],
+                        help="Fitness function: 'sign' = fraction of points classified with "
+                             "the correct sign (default), 'mse' = smooth 1 - normalized-MSE "
+                             "fitness against the +-1 targets.")
+    parser.add_argument("--task", type=str, default="xor", choices=["xor", "and", "or", "xnor"],
+                        help="Boolean task truth table to solve when --random/--convex are "
+                             "not given (default: xor).")
+    parser.add_argument("--init_bounds", type=float, nargs=2, default=[-1.0, 1.0],
+                        metavar=("LOW", "HIGH"),
+                        help="Initial genome sampling bounds (default: -1.0 1.0).")
+    parser.add_argument("--no-crossover", action="store_false", dest="use_crossover",
+                        help="Disable SBX crossover, running a mutation-only GA. Default: "
+                             "crossover enabled.")
     return parser.parse_args()
 
 
@@ -330,7 +442,9 @@ def run_neuroevolution(hidden=3, popsize=100, gens=200, mut_stdev=0.5,
                        activation="tanh", verbose=False, seed=None,
                        random_points=None, convex_points=None, device="auto",
                        inputs=None, signs=None, tournament_size=3, eta=20,
-                       elitism=True, seed_genome_path=None, seed_noise=0.05):
+                       elitism=True, seed_genome_path=None, seed_noise=0.05,
+                       hidden_sizes=None, fitness_mode="sign", task="xor",
+                       init_bounds=(-1.0, 1.0), use_crossover=True):
     """Evolve a neural network controller for the XOR task or a random/convex problem.
 
     The genome encodes all weights and biases of XORNet as a flat real-valued
@@ -366,6 +480,18 @@ def run_neuroevolution(hidden=3, popsize=100, gens=200, mut_stdev=0.5,
                         copy plus the rest perturbed by `seed_noise`) instead of
                         starting from scratch.
         seed_noise:     Stdev of the Gaussian perturbation applied to seed_genome_path copies.
+        hidden_sizes:   Optional list of hidden-layer sizes, e.g. [4, 4] for two hidden
+                        layers. Overrides `hidden` when given (default: None, meaning
+                        a single hidden layer of size `hidden`).
+        fitness_mode:   'sign' (default, today's exact behavior) or 'mse' (smooth
+                        alternative fitness). See make_fitness_fn for details.
+        task:           Boolean task to solve ('xor', 'and', 'or', 'xnor') when no
+                        explicit inputs/signs/random_points/convex_points are given
+                        (default: 'xor', today's exact behavior).
+        init_bounds:    (low, high) tuple for the EA's initial genome sampling range
+                        (default: (-1.0, 1.0), today's exact behavior).
+        use_crossover:  If False, run a mutation-only GA (SimulatedBinaryCrossOver
+                        removed from the operator list). Default True.
 
     Returns:
         best_fit        (np.ndarray): Best fitness at each generation.
@@ -394,36 +520,41 @@ def run_neuroevolution(hidden=3, popsize=100, gens=200, mut_stdev=0.5,
     elif random_points is not None:
         inputs, signs = generate_random_problem(num_points=random_points, seed=seed)
     else:
-        inputs, signs = XOR_INPUTS, XOR_SIGNS
+        if task not in TASKS:
+            raise ValueError(f"Unknown task '{task}'. Choose from {list(TASKS)}")
+        inputs, signs = TASKS[task]
 
-    fitness_fn = make_fitness_fn(hidden, activation, inputs=inputs, signs=signs, device=target_device)
+    fitness_fn = make_fitness_fn(hidden, activation, inputs=inputs, signs=signs,
+                                  device=target_device, hidden_sizes=hidden_sizes,
+                                  fitness_mode=fitness_mode)
 
-    # Compute genome length from a temporary network
-    _tmp = XORNet(hidden=hidden, activation=activation)
-    n_genes = sum(p.numel() for p in _tmp.parameters())
+    # Compute genome length analytically — no need to instantiate a network
+    # just to count its parameters (see genome_size() above).
+    n_genes = genome_size(hidden=hidden, hidden_sizes=hidden_sizes)
 
     problem = Problem(
         objective_sense="max",          # maximise fitness
         objective_func=fitness_fn,
         solution_length=n_genes,        # one gene per weight/bias
-        initial_bounds=(-1.0, 1.0),     # weights initialised in [-1, 1]
+        initial_bounds=tuple(init_bounds),  # weights initialised in [low, high]
         dtype=torch.float32,
         device=target_device,
         vectorized=True,                # fitness_fn takes/returns whole-population batches
     )
 
+    operators = []
+    if use_crossover:
+        # eta (SBX's "distribution index"): higher = offspring cluster
+        # closer to their parents, lower = offspring spread further apart.
+        # tournament_size: how many individuals compete for each parent
+        # slot; higher = stronger pressure toward already-fit individuals.
+        operators.append(SimulatedBinaryCrossOver(problem, tournament_size=tournament_size, eta=eta))
+    operators.append(GaussianMutation(problem, stdev=mut_stdev))
+
     algorithm = GeneticAlgorithm(
         problem,
         popsize=popsize,
-        operators=[
-            # eta (SBX's "distribution index"): higher = offspring cluster
-            # closer to their parents, lower = offspring spread further
-            # apart. tournament_size: how many individuals compete for
-            # each parent slot; higher = stronger pressure toward
-            # already-fit individuals.
-            SimulatedBinaryCrossOver(problem, tournament_size=tournament_size, eta=eta),
-            GaussianMutation(problem, stdev=mut_stdev),
-        ],
+        operators=operators,
         elitist=elitism,   # best individual always survives → fitness never drops (default on)
     )
 
@@ -510,23 +641,24 @@ def plot_fitness(best_fit, avg_fit, worst_fit, problem_name="XOR"):
 
 
 def plot_decision_boundary_custom(best_genome, hidden, activation, best_fitness,
-                                   inputs, signs, problem_name="Custom"):
+                                   inputs, signs, problem_name="Custom", hidden_sizes=None):
     """Plot the 2-D decision boundary of the evolved network with custom data.
 
     Args:
         best_genome:  Flat weight vector of the best evolved network.
-        hidden:       Number of hidden neurons.
+        hidden:       Number of hidden neurons (used only if hidden_sizes is None).
         activation:   Activation function name.
         best_fitness: Final best fitness value.
         inputs:       Input tensor (can be XOR, random, or convex).
         signs:        Sign labels (can be XOR, random, or convex).
         problem_name: Name to display in the title (e.g., "XOR", "Random(8)", "Convex(6)").
+        hidden_sizes: Optional list of hidden-layer sizes, overriding `hidden`.
     """
     best_genome_cpu = best_genome.cpu()
     inputs_cpu = inputs.cpu()
     signs_cpu = signs.cpu()
 
-    net = XORNet(hidden=hidden, activation=activation).to("cpu")
+    net = XORNet(hidden=hidden, activation=activation, hidden_sizes=hidden_sizes).to("cpu")
     utils.vector_to_parameters(best_genome_cpu, net.parameters())
 
     # ── Grid bounds: add 40 % padding around the actual data range ───────────
@@ -598,10 +730,10 @@ def plot_decision_boundary_custom(best_genome, hidden, activation, best_fitness,
     plt.show()
 
 
-def print_truth_table(best_genome, hidden, activation):
+def print_truth_table(best_genome, hidden, activation, hidden_sizes=None):
     """Print the XOR truth table produced by the evolved network."""
     best_genome_cpu = best_genome.cpu()
-    net = XORNet(hidden=hidden, activation=activation).to("cpu")
+    net = XORNet(hidden=hidden, activation=activation, hidden_sizes=hidden_sizes).to("cpu")
     utils.vector_to_parameters(best_genome_cpu, net.parameters())
 
     with torch.no_grad():
@@ -624,21 +756,22 @@ def print_truth_table(best_genome, hidden, activation):
     print(f"\nPerfect XOR controller: {perfect}")
 
 
-def print_truth_table_custom(best_genome, hidden, activation, inputs, signs):
+def print_truth_table_custom(best_genome, hidden, activation, inputs, signs, hidden_sizes=None):
     """Print the truth table produced by the evolved network for custom data.
 
     Args:
         best_genome:  Flat weight vector of the best evolved network.
-        hidden:       Number of hidden neurons.
+        hidden:       Number of hidden neurons (used only if hidden_sizes is None).
         activation:   Activation function name.
         inputs:       Input tensor (can be XOR or random).
         signs:        Sign labels (can be XOR or random).
+        hidden_sizes: Optional list of hidden-layer sizes, overriding `hidden`.
     """
     best_genome_cpu = best_genome.cpu()
     inputs_cpu = inputs.cpu()
     signs_cpu = signs.cpu()
 
-    net = XORNet(hidden=hidden, activation=activation).to("cpu")
+    net = XORNet(hidden=hidden, activation=activation, hidden_sizes=hidden_sizes).to("cpu")
     utils.vector_to_parameters(best_genome_cpu, net.parameters())
 
     with torch.no_grad():
@@ -689,7 +822,7 @@ def main():
               f"{args.random} points, hidden={args.hidden}, "
               f"activation={args.activation}, popsize={args.popsize}, gens={args.gens}")
     else:
-        print(f"Evolving XOR controller: hidden={args.hidden}, "
+        print(f"Evolving {args.task.upper()} controller: hidden={args.hidden}, "
               f"activation={args.activation}, popsize={args.popsize}, gens={args.gens}")
 
     if args.seed_genome:
@@ -711,6 +844,11 @@ def main():
         elitism=args.elitism,
         seed_genome_path=args.seed_genome,
         seed_noise=args.seed_noise,
+        hidden_sizes=args.hidden_sizes,
+        fitness_mode=args.fitness_mode,
+        task=args.task,
+        init_bounds=tuple(args.init_bounds),
+        use_crossover=args.use_crossover,
     )
 
     print(f"\nBest fitness achieved: {best_fitness:.4f}")
@@ -728,7 +866,7 @@ def main():
         print(f"Fitness-over-generations saved to: {args.fitness_output}")
 
     print_truth_table_custom(best_genome, hidden=args.hidden, activation=args.activation,
-                             inputs=inputs, signs=signs)
+                             inputs=inputs, signs=signs, hidden_sizes=args.hidden_sizes)
 
     # Determine problem name for display
     if args.convex is not None:
@@ -736,14 +874,15 @@ def main():
     elif args.random is not None:
         problem_name = f"Random({args.random})"
     else:
-        problem_name = "XOR"
+        problem_name = args.task.upper()
 
     if args.vizperf:
         plot_fitness(best_fit, avg_fit, worst_fit, problem_name=problem_name)
 
     if args.vizbound:
         plot_decision_boundary_custom(best_genome, args.hidden, args.activation,
-                                      best_fitness, inputs, signs, problem_name=problem_name)
+                                      best_fitness, inputs, signs, problem_name=problem_name,
+                                      hidden_sizes=args.hidden_sizes)
 
 
 if __name__ == "__main__":

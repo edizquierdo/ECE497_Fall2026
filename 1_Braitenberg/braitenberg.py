@@ -56,6 +56,12 @@ class Vehicle(Point):
     def __init__(self, angle_offset=np.pi/2, turn_gain=0.1, noise_stdev=0.1, distance=10,
                  wiring="crossed"):
         super().__init__()
+        # Every Vehicle starts at the origin facing along +x -- the same
+        # position and heading every repetition, every run. The Light is
+        # always placed along +x too (see Light below), so this is also
+        # always pointed directly at the light. The only thing that varies
+        # between repetitions is the random noise. Keep that in mind if
+        # you're ever tempted to run with noise_stdev=0.
         self.orientation = 0.0          # heading angle (radians); starts pointing along +x
         self.velocity = 0.0             # forward speed (arbitrary units)
         self.radius = 1.0               # body radius; also the sensor arm length
@@ -68,6 +74,10 @@ class Vehicle(Point):
         # Sensor gain: normalise raw distance so that a sensor at `distance`
         # from the light reads approximately 0.5 (mid-range).
         # This scales raw Euclidean distance into a convenient sensor range.
+        # Calibrated once, here, against the single light this Vehicle is
+        # constructed with -- if you extend the simulator with a second
+        # stimulus at a different distance (extra credit territory), it
+        # will be read on a scale calibrated for the first one.
         self.sensor_gain = 1 / distance
 
         self.turn_gain   = turn_gain
@@ -129,8 +139,10 @@ class Vehicle(Point):
         OPTIONAL (advanced): instead of hand-editing this method every
         time you want to switch schemes, use self.wiring (set in
         __init__, default "crossed") to select between the two schemes
-        at runtime, and add a --wiring command-line flag to sim.py and
-        study.py so you can switch schemes without touching the code.
+        at runtime. A --wiring command-line flag is already wired up in
+        both sim.py and study.py (it just constructs Vehicle(...,
+        wiring=...)) — once think() reads self.wiring here, you can
+        switch schemes with a flag instead of touching the code.
         """
         raise NotImplementedError(
             "Vehicle.think() is not implemented yet. See the TODO above "

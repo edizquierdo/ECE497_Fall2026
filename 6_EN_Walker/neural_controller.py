@@ -43,13 +43,28 @@ def _normalize_hidden_sizes(hidden_sizes: HiddenSizes) -> tuple:
 class WalkerController(nn.Module):
     """[6 leg angles] -> hidden layer(s) -> [18 actuator commands in [0,1]].
 
-    Sigmoid (not Tanh) on the output layer because actions are interpreted
-    in [0, 1], not [-1, 1] (see walker.py for exactly how each of the 18
-    values is used).
+    Sigmoid (not Tanh) on the output layer regardless of `activation`,
+    because actions are interpreted in [0, 1], not [-1, 1] (see walker.py
+    for exactly how each of the 18 values is used).
+
+    Args:
+        hidden_sizes: single int or sequence of hidden layer sizes.
+        obs_size: input dimensionality (one leg-angle sensor per leg).
+        activation: name of the activation applied after each hidden layer
+            -- one of 'tanh', 'relu', 'sigmoid' (default: 'tanh').
     """
 
-    def __init__(self, hidden_sizes: HiddenSizes = 64, obs_size: int = OBS_SIZE):
+    ACTIVATIONS = {
+        "tanh":    nn.Tanh,
+        "sigmoid": nn.Sigmoid,
+        "relu":    nn.ReLU,
+    }
+
+    def __init__(self, hidden_sizes: HiddenSizes = 64, obs_size: int = OBS_SIZE, activation: str = "tanh"):
         super().__init__()
+        if activation not in self.ACTIVATIONS:
+            raise ValueError(f"Unknown activation '{activation}'. Choose from {list(self.ACTIVATIONS)}")
+
         self.hidden_sizes = _normalize_hidden_sizes(hidden_sizes)
         self.obs_size = obs_size
 
@@ -57,7 +72,7 @@ class WalkerController(nn.Module):
         in_size = obs_size
         for h in self.hidden_sizes:
             layers.append(nn.Linear(in_size, h))
-            layers.append(nn.Tanh())
+            layers.append(self.ACTIVATIONS[activation]())
             in_size = h
         layers.append(nn.Linear(in_size, ACTION_SIZE))
         layers.append(nn.Sigmoid())  # actions are in [0, 1], not [-1, 1]
@@ -75,6 +90,7 @@ class WalkerController(nn.Module):
 
     @staticmethod
     def genome_size(hidden_sizes: HiddenSizes = 64, obs_size: int = OBS_SIZE) -> int:
+        # activation doesn't affect parameter count, so it's not a parameter here.
         model = WalkerController(hidden_sizes=hidden_sizes, obs_size=obs_size)
         return sum(p.numel() for p in model.parameters())
 

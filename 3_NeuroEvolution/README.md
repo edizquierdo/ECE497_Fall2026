@@ -74,21 +74,23 @@ This approach is gradient-free, works on discontinuous or non-differentiable obj
 
 | File | Purpose |
 |------|---------|
-| `neural.py` | Defines the network, fitness function, problem generators, and runs neuroevolution. |
+| `evolve.py` | Defines the network, fitness function, problem generators, and runs neuroevolution. |
 | `study.py` | Performs systematic parameter sweeps and generates plots. |
 | `requirements.txt` | Pinned dependency versions for this project's virtual environment. |
 | `README.md` | Project documentation. |
 
-Most of your modifications will involve understanding and extending the code in `neural.py`.
+Most of your modifications will involve understanding and extending the code in `evolve.py`.
 
 ### Alternative Problem Generators
 
-In addition to the standard XOR task, `neural.py` includes generators for custom classification problems:
+In addition to the standard XOR task, `evolve.py` includes generators for custom classification problems:
 
 - **Random problem**: Points sampled uniformly from `[-0.5, 1.5]²` with random labels (+1/-1).
 - **Convex problem**: Points placed on a circle at equal angles with alternating labels.
 
 These generalize the XOR task and allow investigation of how network architecture affects performance on different classification challenges.
+
+> **Note on `--seed`:** it controls both the evolutionary algorithm's randomness and the *random* problem generator's point placement. The *convex* problem generator is fully deterministic (points sit at fixed angles on a circle) — `--seed` has no effect on which points a `--convex N` run uses, only on the EA.
 
 ---
 
@@ -147,21 +149,26 @@ If you'd rather use `conda`, that's fine too — just create an environment with
 To run the default neuroevolution experiment,
 
 ```bash
-python neural.py
+python evolve.py
 ```
 
 Useful command-line options include:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--hidden` | Number of hidden neurons | `3` |
+| `--hidden` | Number of hidden neurons in a single hidden layer | `3` |
+| `--hidden_sizes N [N ...]` | List of hidden-layer sizes, e.g. `--hidden_sizes 4 4` for two hidden layers of 4 neurons each. Overrides `--hidden` when given | `None` |
 | `--popsize` | Population size | `100` |
 | `--gens` | Number of generations | `200` |
 | `--mut_stdev` | Gaussian mutation standard deviation | `0.5` |
 | `--tournament_size` | Tournament size for SBX crossover | `3` |
 | `--eta` | Distribution index for SBX crossover | `20` |
+| `--no-crossover` | Disable SBX crossover, running a mutation-only GA | crossover on |
 | `--no-elitism` | Disable elitism (elitism is enabled by default) | elitism on |
+| `--init_bounds LOW HIGH` | Initial genome sampling bounds | `-1.0 1.0` |
 | `--activation` | Hidden layer activation function (`tanh`, `sigmoid`, or `relu`) | `tanh` |
+| `--fitness_mode` | Fitness function: `sign` (fraction of points classified with the correct sign) or `mse` (smooth 1 − normalized-MSE against the ±1 targets) | `sign` |
+| `--task` | Boolean truth table to solve when `--random`/`--convex` aren't given (`xor`, `and`, `or`, `xnor`) | `xor` |
 | `--vizperf` | Plot fitness over generations | `False` |
 | `--vizbound` | Plot the decision boundary of the best evolved network | `False` |
 | `--verbose` | Print per-generation statistics to the console | `False` |
@@ -171,7 +178,7 @@ Useful command-line options include:
 | `--device` | Hardware device for execution (`auto`, `cpu`, `cuda`, `mps`) | `auto` |
 | `--output FILE` | File path to save the best evolved genome, e.g. `best_genome.npy` | `None` |
 | `--fitness_output FILE` | Save per-generation best/avg/worst fitness to this `.npz` file (keys `best`/`avg`/`worst`), so you can reload and compare fitness curves across configurations without re-running evolution | `None` |
-| `--seed_genome FILE` | Seed the initial population around a genome saved by a previous `--output` run (must match the current `--hidden`/`--activation`) instead of starting from scratch — one exact copy plus the rest perturbed by `--seed_noise` | `None` |
+| `--seed_genome FILE` | Seed the initial population around a genome saved by a previous `--output` run (must match the current `--hidden`/`--hidden_sizes`/`--activation`) instead of starting from scratch — one exact copy plus the rest perturbed by `--seed_noise` | `None` |
 | `--seed_noise` | Stdev of the Gaussian perturbation applied to `--seed_genome` copies | `0.05` |
 
 > **Note on `--device`:** For a network as tiny as `XORNet` (10–20 weights),
@@ -186,21 +193,28 @@ Useful command-line options include:
 For example,
 
 ```bash
-python neural.py --vizperf --vizbound
+python evolve.py --vizperf --vizbound
 ```
 
 or
 
 ```bash
-python neural.py --hidden 5 --popsize 50 --gens 300 --verbose
+python evolve.py --hidden 5 --popsize 50 --gens 300 --verbose
+```
+
+or, using a couple of the other options above together:
+
+```bash
+python evolve.py --hidden_sizes 4 4 --activation relu --fitness_mode mse --vizperf --verbose
+python evolve.py --task xnor --no-crossover --init_bounds -3 3 --verbose
 ```
 
 Or run on GPU workstations or custom devices:
 
 ```bash
-python neural.py --device cuda --popsize 500 --gens 1000
-python neural.py --random 8 --vizbound
-python neural.py --convex 6 --activation sigmoid --vizperf
+python evolve.py --device cuda --popsize 500 --gens 1000
+python evolve.py --random 8 --vizbound
+python evolve.py --convex 6 --activation sigmoid --vizperf
 ```
 
 ---
@@ -248,14 +262,32 @@ Useful command-line options include:
 | `--seed` | Base random seed for reproducibility | `None` |
 | `--verbose` | Print progress during the study | `False` |
 | `--device` | Hardware device for execution (`auto`, `cpu`, `cuda`, `mps`) | `auto` |
+| `--activation` | Fixed (non-swept) hidden layer activation function | `tanh` |
+| `--fitness_mode` | Fixed (non-swept) fitness function (`sign` or `mse`) | `sign` |
+| `--task` | Fixed (non-swept) boolean task when `--problem xor` | `xor` |
+| `--hidden_sizes N [N ...]` | Fixed (non-swept) hidden-layer-sizes override. Meaningless when `--param hidden`, since that sweeps the single `--hidden` value `hidden_sizes` would override | `None` |
 
 Each experiment generates a figure showing how the chosen parameter influences the final fitness, including a shaded ±1 standard deviation band across repetitions.
+
+> **Note:** unlike `evolve.py`'s `--vizperf`/`--vizbound` (which open an interactive plot window and don't save to disk), `study.py` always writes its plot straight to the `--output` file and never opens a window — look for the saved PNG rather than expecting a popup.
+
+### Building Your Own Experiment Scripts
+
+`study.py` is a worked example of a pattern you'll rely on throughout this
+course: sweep one parameter, repeat several times per value to average out
+randomness, save the results systematically, and produce a labeled figure
+with error bars rather than a single noisy run. Read it before you need to
+write something like it yourself — later projects increasingly expect you to
+build this kind of tooling on your own rather than have it handed to you, so
+it's worth understanding *why* `study.py` is structured the way it is (fixed
+problem instance held constant across repetitions, `reps` independent seeds
+per value, mean ± std recorded and plotted) and not just *that* it works.
 
 ---
 
 ## Understanding the Network
 
-The class `XORNet` in `neural.py` implements the network using PyTorch's `nn.Sequential`:
+The class `XORNet` in `evolve.py` implements the network using PyTorch's `nn.Sequential`:
 
 ```
 Input (2)  →  nn.Linear(2, hidden)  →  Activation  →  nn.Linear(hidden, 1)  →  Output (1)
@@ -267,9 +299,9 @@ All of the network's weights and biases are collected into a **flat genome vecto
 genome = torch.nn.utils.parameters_to_vector(net.parameters())
 ```
 
-This genome layout (all of `W1`, then `b1`, then `W2`, then `b2`, flattened in the order PyTorch's `parameters()` iterator visits them) is what EvoTorch evolves.
+This genome layout (all of `W1`, then `b1`, then `W2`, then `b2`, flattened in the order PyTorch's `parameters()` iterator visits them) is what EvoTorch evolves. If you want to check a by-hand parameter count from Part 1 programmatically, `genome_size(hidden=..., hidden_sizes=...)` computes it directly from the layout, without building an actual network.
 
-The fitness function evaluates the *entire population at once* rather than one genome at a time: it slices a `(popsize, n_genes)` batch of genomes back into per-individual `W1, b1, W2, b2` matrices and runs one batched matrix multiplication across the whole population (see `make_fitness_fn` in `neural.py`). For each individual, it then:
+The fitness function evaluates the *entire population at once* rather than one genome at a time: it slices a `(popsize, n_genes)` batch of genomes back into per-individual `W1, b1, W2, b2` matrices and runs one batched matrix multiplication across the whole population (see `make_fitness_fn` in `evolve.py`). For each individual, it then:
 
 1. Runs a forward pass on all four XOR inputs.
 2. Counts how many of the four outputs have the correct sign.
@@ -283,16 +315,17 @@ This batched evaluation is also what makes `--device cuda`/`mps` meaningful (see
 
 - Start by running the default configuration before changing any parameters:
   ```bash
-  python neural.py --verbose --vizperf --vizbound
+  python evolve.py --verbose --vizperf --vizbound
   ```
 - Read the source code carefully before making modifications.
 - Use `--seed` for reproducibility when debugging.
 - Change one parameter at a time to isolate its effect.
 - Use `study.py` with `--reps 10` or more for reliable estimates of average behavior.
+- Most default-configuration runs (`hidden=3`, `popsize=100`) converge in well under 50 generations — the default `gens=200` is intentionally generous headroom, not a tight budget, so a run that takes longer isn't necessarily a sign something's wrong.
 - The decision boundary plot (`--vizbound`) is a powerful diagnostic: a failed run will show an incorrect or degenerate boundary.
 - For custom problems, combine options as needed:
   ```bash
-  python neural.py --convex 8 --activation sigmoid --gens 300 --verbose
+  python evolve.py --convex 8 --activation sigmoid --gens 300 --verbose
   python study.py --problem random --points 6 --reps 10
   ```
 
@@ -302,9 +335,9 @@ This batched evaluation is also what makes `--device cuda`/`mps` meaningful (see
 
 ### Part 1 – Understand the Network and Fitness Function
 
-Read `neural.py` carefully and answer the following questions before running any experiments:
+Read `evolve.py` carefully and answer the following questions before running any experiments:
 
-- How many total weights and biases does a network with 3 hidden neurons have? Count them by layer.
+- How many total weights and biases does a network with 3 hidden neurons have? Count them by layer. Then check your count against `genome_size(hidden=3)` — do they agree?
 - Why does the fitness function check the *sign* of the output rather than its exact value?
 - What fitness score would a completely random genome achieve on average? Why?
 - Why can a network with zero hidden neurons (i.e., a linear classifier) never solve XOR?
@@ -313,7 +346,7 @@ Read `neural.py` carefully and answer the following questions before running any
 Run the default configuration and verify that the network reaches perfect fitness:
 
 ```bash
-python neural.py --verbose --vizperf --vizbound
+python evolve.py --verbose --vizperf --vizbound
 ```
 
 ---
@@ -339,15 +372,19 @@ Questions to consider include:
 
 ---
 
-### Part 3 – Modify the Network
+### Part 3 – Explore the Rest of the Neural Controller
 
-Extend or alter the code by implementing one or more of the following:
+`evolve.py` already ships working support for every direction below via CLI
+flags — this part is about designing a fair comparison and interpreting what
+you see, not about writing new code (Parts 1–2 already exercised `--hidden`;
+this part is where you exercise everything else the controller can do).
+Investigate at least two of the following:
 
-- **Change the activation function**: Compare `tanh`, `sigmoid`, and `relu` using `study.py`. Does the choice of activation affect how quickly the network converges?
-- **Add a second hidden layer**: Modify `XORNet` to include two hidden layers. Does this help or hurt performance on XOR? Why?
-- **Change the fitness function**: Instead of counting correct signs, implement a smooth fitness that rewards outputs closer to the correct value (e.g., mean squared error against ±1 targets). How does this change evolutionary dynamics?
-- **Change the task**: Modify the input/output table to represent a different Boolean function (e.g., AND, OR, XNOR). Is XOR harder or easier than these alternatives?
-- **Test on custom problems**: Use `--random` and `--convex` options to evaluate network performance on alternative classification challenges. How does architecture affect performance on convex vs. random problems?
+- **Activation function**: Compare `--activation tanh`, `sigmoid`, and `relu`, holding everything else fixed. Does the choice of activation affect how quickly the network converges, or how reliably it does?
+- **Network depth**: Compare a single hidden layer (`--hidden`) against two hidden layers of the same width (`--hidden_sizes h h`) at *similar total parameter count* — not matching neuron counts: two hidden layers of size 4 have 37 weights and biases total, while a single hidden layer needs roughly 8 neurons to reach a similar count, since the hidden-to-hidden connection alone costs `h²` weights (`genome_size(hidden=..., hidden_sizes=...)` computes either count directly). Does depth help or hurt performance on XOR? Why?
+- **Fitness function**: Compare `--fitness_mode sign` (today's default: fraction of points with the correct sign) against `--fitness_mode mse` (a smooth alternative: tanh-squashed output vs. the ±1 target, mean squared error). How does the shape of the fitness landscape change evolutionary dynamics — smoother convergence, different failure modes, more or less sensitivity to `--mut_stdev`?
+- **Task**: Compare `--task xor` against `--task and`, `or`, or `xnor` (same four corner points, different labels). Is XOR harder or easier than these alternatives? What does that say about which of the four is/isn't linearly separable?
+- **Custom problems**: Use `--random` and `--convex` to evaluate network performance on alternative classification challenges. How does architecture affect performance on convex vs. random problems?
 
 ---
 
@@ -366,17 +403,17 @@ Support your conclusions with appropriate plots and discussion.
 
 ## Optional / Advanced Challenge
 
-Parts 1–4 are required (Part 3's modifications already give you several ways to extend the network itself). Beyond that, pick **one** of the following four directions to investigate further. Each is open-ended — there's no single right answer, and the point is to form a hypothesis, run the experiment, and report what you found. Only attempt one; go as deep as you like on it.
+Parts 1–4 are required (Part 3's comparisons already give you several ways to explore the network itself). Beyond that, pick **one** of the following four directions to investigate further. Each is open-ended — there's no single right answer, and the point is to form a hypothesis, run the experiment, and report what you found. Only attempt one; go as deep as you like on it. Note: #1 and #4 require you to write new code; #2 and #3 are pre-built CLI options where the real work is in the experimental design and interpretation, not new code — pick whichever kind of challenge you'd rather spend your time on.
 
 **1. Neuroevolution vs. backprop, head to head.** Train the exact same `XORNet` architecture with PyTorch's own gradient descent instead of EvoTorch — a few lines: define a loss (e.g., MSE against ±1 targets), call `loss.backward()`, and step an optimizer. Compare convergence speed and reliability against neuroevolution across many random seeds. Hypothesis: for a network this tiny, does gradient descent actually converge faster and more reliably, or does XOR's well-known symmetric, non-convex loss landscape trip up gradient descent in ways evolution's population-based search avoids?
 
-**2. Genome initialization range.** `run_neuroevolution` samples generation-0 weights uniformly from `initial_bounds=(-1, 1)`. Sweep this range itself (e.g., try `(-3, 3)` or `(-0.1, 0.1)`) instead of any of the Part 2 parameters. Hypothesis: does starting weights too large or too small stall evolution the same way an oversized weight range stalled Project 6's feedforward controller — saturating Tanh and leaving little fitness variation for selection to act on?
+**2. Genome initialization range.** `--init_bounds LOW HIGH` controls the range generation-0 weights are sampled from (default `-1.0 1.0`) — no code change needed, just the flag. Sweep this range itself (e.g., `--init_bounds -3 3` or `--init_bounds -0.1 0.1`) instead of any of the Part 2 parameters. Hypothesis: does starting weights too large or too small stall evolution — e.g. by saturating Tanh and leaving little fitness variation for selection to act on?
 
-**3. Crossover ablation.** Turn off `SimulatedBinaryCrossOver` (mutation-only GA — remove it from the `operators` list) and compare convergence against the default crossover-plus-mutation setup. Hypothesis: for a genome this small (10–20 genes for a few hidden neurons), does crossover actually help, or is the problem small enough that mutation alone finds solutions just as fast?
+**3. Crossover ablation.** `--no-crossover` runs a mutation-only GA (`SimulatedBinaryCrossOver` removed from the operator list) — no code change needed, just the flag. Compare convergence against the default crossover-plus-mutation setup. Hypothesis: for a genome this small (10–20 genes for a few hidden neurons), does crossover actually help, or is the problem small enough that mutation alone finds solutions just as fast?
 
 **4. Robustness of an evolved solution to weight noise.** After evolving a network that reaches perfect fitness, inject increasing amounts of Gaussian noise into its weights (post-hoc, not during evolution) and measure how much noise it takes before it stops solving XOR. Hypothesis: do networks evolved with a larger population or more generations end up more "robust" (a flatter fitness peak) than ones that just barely converged, or is robustness unrelated to how easily a genome converged in the first place?
 
-You're encouraged to explore your own idea beyond these four as well, as long as it's a genuine extension (not just one of Part 3's five modification options, and not just a parameter change already covered in Part 2).
+You're encouraged to explore your own idea beyond these four as well, as long as it's a genuine extension (not just one of Part 3's five comparison options, and not just a parameter change already covered in Part 2).
 
 ---
 
@@ -410,11 +447,11 @@ Organize the body of your report into one section per assignment part. Each sect
 - For each plot, state what was varied and what was held fixed, and interpret the trend (e.g., where performance plateaus, where it degrades).
 - Answers to the five guiding questions from Part 2, supported directly by your plots (diminishing returns from network size, small-population behavior, mutation stdev extremes, minimum generations for reliable convergence, variance vs. population size).
 
-**Part 3 — Modify the Network**
+**Part 3 — Explore the Rest of the Neural Controller**
 
-- State which modification(s) you chose to implement (activation function comparison, second hidden layer, smooth/MSE-based fitness function, alternative Boolean function, and/or custom `--random`/`--convex` problems). You only need to implement one or more, not all five.
-- For each modification you made: a short description of the change, and plots/results comparing it against the unmodified baseline.
-- A discussion of what changed and why — e.g., did the modification affect convergence speed, final fitness, robustness across seeds, or the shape of the decision boundary?
+- State which comparison(s) you chose to investigate (activation function, network depth, fitness function, alternative Boolean task, and/or custom `--random`/`--convex` problems). You only need at least two, not all five.
+- For each comparison: a short description of what you held fixed and what you varied, and plots/results comparing it against the baseline configuration.
+- A discussion of what changed and why — e.g., did the comparison affect convergence speed, final fitness, robustness across seeds, or the shape of the decision boundary?
 
 **Part 4 — Quantitative Analysis**
 

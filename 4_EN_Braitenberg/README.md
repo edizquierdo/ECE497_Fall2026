@@ -156,11 +156,15 @@ Useful command-line options:
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--hidden` | Number of hidden neurons | `8` |
+| `--hidden_sizes` | List of hidden layer sizes for a multi-layer network, e.g. `--hidden_sizes 16 16` for two 16-neuron hidden layers. Overrides `--hidden` when given. See the Part 1 optional architecture challenge. | `None` (use `--hidden`) |
+| `--activation` | Activation function on the hidden layer(s): `tanh`, `relu`, or `sigmoid`. The output layer always uses Tanh regardless, so motor commands stay bounded to `[-1, 1]`. See the Part 1 optional architecture challenge. | `tanh` |
 | `--popsize` | Population size | `50` |
 | `--gens` | Number of generations | `100` |
 | `--mut_stdev` | Mutation strength | `0.5` |
-| `--tournament_size` | Tournament size for crossover | `3` |
+| `--tournament_size` | Tournament size for SBX crossover | `3` |
 | `--eta` | Distribution index for SBX crossover | `20` |
+| `--no-crossover` | Disable SBX crossover, running a mutation-only GA | crossover on |
+| `--init_bounds LOW HIGH` | Initial genome sampling bounds | `-1.0 1.0` |
 | `--no-elitism` | Disable elitism | elitism on |
 | `--vizperf` | Visualize fitness over generations | off |
 | `--verbose` | Print progress to console | off |
@@ -172,7 +176,7 @@ Useful command-line options:
 | `--duration` | Number of simulation steps per episode | `500` |
 | `--output` | File path to save the best evolved genome, e.g. `best_genome.npy` | `None` |
 | `--fitness_output FILE` | Save per-generation best/avg/worst fitness to this `.npz` file (keys `best`/`avg`/`worst`), so you can reload and compare fitness curves across configurations without re-running evolution | `None` |
-| `--seed_genome FILE` | Seed the initial population around a genome saved by a previous `--output` run (must match the current `--hidden`) instead of starting from scratch — one exact copy plus the rest perturbed by `--seed_noise` | `None` |
+| `--seed_genome FILE` | Seed the initial population around a genome saved by a previous `--output` run (must match the current `--hidden`/`--hidden_sizes`) instead of starting from scratch — one exact copy plus the rest perturbed by `--seed_noise` | `None` |
 | `--seed_noise` | Stdev of the Gaussian perturbation applied to `--seed_genome` copies | `0.05` |
 | `--episodes_per_eval` | Number of episodes to average per fitness evaluation | `5` |
 
@@ -186,6 +190,13 @@ To run with non-default vehicle parameters:
 
 ```bash
 python evolve.py --angle_offset 1.0 --turn_gain 0.2 --noise 0.1
+```
+
+To compare crossover on vs. off, or a wider initial weight range:
+
+```bash
+python evolve.py --no-crossover --vizperf
+python evolve.py --init_bounds -3.0 3.0 --vizperf
 ```
 
 **Note on the distance parameter:** The `--distance` argument specifies how far from the origin (where the light is) the agent starts, not the light's position. The light is always at (0, 0), and agents start at a random angle around this circle.
@@ -227,6 +238,8 @@ Useful command-line options for `sim.py`:
 | `--reps` | Number of independent repetitions to average over | `5` |
 | `--distance` | Distance to light source | `10.0` |
 | `--hidden` | Number of hidden neurons; must match the network used during evolution | `8` |
+| `--hidden_sizes` | List of hidden layer sizes, e.g. `--hidden_sizes 16 16`. Overrides `--hidden` when given. Must match the architecture the genome was evolved with. | `None` (use `--hidden`) |
+| `--activation` | Activation function on the hidden layer(s): `tanh`, `relu`, or `sigmoid`. Must match what the genome was evolved with. | `tanh` |
 | `--angle_offset` | Angular separation between sensors (radians) | `pi/2` |
 | `--turn_gain` | Turn gain for steering | `0.1` |
 | `--noise` | Motion noise standard deviation | `0.1` |
@@ -304,6 +317,11 @@ The `NeuralVehicle` class (defined in `braitenberg.py`) extends the Braitenberg 
 
 - Start with small populations (25-50) and fewer generations (50-100) to test
   your setup before running large experiments
+- **Before running each experiment, write down your prediction for the
+  result.** It's easy to only notice the results that confirm what you
+  already expected; a written prediction makes the genuinely surprising
+  results — which are usually the most interesting ones to discuss in your
+  report — much easier to spot.
 - Use `--seed` for reproducibility when debugging
 - Visualize fitness curves (`--vizperf`) to monitor evolutionary progress
 - Compare with the Braitenberg controller from Project 1 as a baseline
@@ -320,14 +338,18 @@ Answer these questions before running any experiments:
 
 - How many total parameters (weights + biases) does a network with 8 hidden
   neurons have? Count them by layer.
-- Why is Tanh used for the hidden layer but not for outputs?
+- `neural_controller.py` applies Tanh after *both* the hidden layer and the
+  output layer. These two uses of Tanh serve different purposes — what is
+  each one doing? (Hint: one is about giving the network the ability to
+  represent nonlinear functions at all; the other is about constraining the
+  physical range of a motor command. Which is which?)
 - What would happen if we used ReLU instead of Tanh in the hidden layer?
 
-**Optional / Advanced Challenge:** The provided `NeuralController` (in `neural_controller.py`) is a single hidden layer, `2 → hidden → 2`, with Tanh activations throughout. Try modifying the architecture itself and re-run evolution to see how it affects evolvability:
-- **Depth**: add a second hidden layer (e.g. `2 → hidden → hidden → 2`) and compare against the single-layer network of similar total parameter count. Does the deeper network evolve as easily, or does it struggle more (deeper genomes can be harder for a genetic algorithm to search)?
-- **Activation function**: swap Tanh for another transfer function (e.g. ReLU, Sigmoid, or a mix) on the hidden layer(s), keeping Tanh on the output layer so motor commands stay bounded to [-1, 1]. How does the choice of hidden activation affect the smoothness of evolved trajectories or the final fitness reached?
+**Optional / Advanced Challenge:** The provided `NeuralController` (in `neural_controller.py`) defaults to a single hidden layer, `2 → hidden → 2`, with Tanh activations throughout — but its constructor also accepts an optional `hidden_sizes` (a list, e.g. `[16, 16]`, for multi-layer networks) and `activation` (e.g. `nn.ReLU`, `nn.Sigmoid`) parameter, and `evolve.py`/`sim.py` expose these as `--hidden_sizes`/`--activation` CLI flags, so you don't need to touch `neural_controller.py` yourself to try the experiments below — though you're welcome to read (or modify) how it builds the layer stack if you want to understand the mechanism, not just use it:
+- **Depth**: try `--hidden_sizes 16 16` (a second hidden layer) and compare against a single-layer network of *similar total parameter count*. Watch out: matching neuron count is **not** the same as matching parameter count. For example, a single hidden layer of 32 neurons has `2×32 + 32 + 32×2 + 2 = 162` parameters, while two hidden layers of 16 neurons each have `2×16 + 16 + 16×16 + 16 + 16×2 + 2 = 354` parameters — the hidden-to-hidden connection alone (`16×16 = 256` weights) more than doubles the total. If you want a genuinely parameter-matched single-layer comparison against `16,16`, you'd need roughly `--hidden 70` (352 parameters), not `--hidden 32`. Does the deeper network evolve as easily as a neuron-matched single layer, a parameter-matched single layer, both, or neither (deeper genomes can be harder for a genetic algorithm to search)?
+- **Activation function**: try `--activation relu` or `--activation sigmoid` (the output layer stays Tanh regardless, so motor commands stay bounded to [-1, 1]). How does the choice of hidden activation affect the smoothness of evolved trajectories or the final fitness reached?
 
-You don't need to change anything outside `neural_controller.py` — `evolve.py` computes genome length directly from whatever architecture `NeuralController` defines, so a modified network will evolve and load correctly as-is.
+If you implement your own version instead of using the built-in flags, you don't need to change anything outside `neural_controller.py` — `evolve.py` computes genome length via `genome_size()` (also in `neural_controller.py`), which derives it analytically from whatever architecture `NeuralController` defines, so a modified network will evolve and load correctly as-is.
 
 ### Part 2 – Evolve and Analyze
 
@@ -365,8 +387,8 @@ Questions:
 
 Collect data from multiple independent runs:
 
-1. Run evolution with the same parameters 10 times
-2. Record best fitness, convergence generation, and genome size
+1. Run evolution with the same parameters (same hidden size, popsize, gens, etc. — only the `--seed` should differ) 10 times.
+2. Record best fitness and convergence generation for each run. **Define what "convergence generation" means for your own analysis and state that definition in your report** — this project doesn't define it for you. One reasonable choice: the earliest generation at which a run's best-fitness curve first reaches some fraction (e.g. 95%) of that same run's own final best fitness; any clearly-stated definition is fine. Also record genome size once for this part — since Part 4 holds architecture fixed and only varies `--seed`, genome size will be identical across all 10 runs (it's Part 2's hidden-size sweep where genome size actually varies run to run).
 3. Analyze variance across runs
 
 Questions:
@@ -384,7 +406,7 @@ Parts 1–4 are required (Parts 1 and 2 already offer smaller optional callouts 
 
 **2. Sensor noise and robustness comparison.** Evolve with corrupted sensor readings (add noise directly to `left_sensor`/`right_sensor` inside `sense()`, separate from the vehicle's existing orientation noise) and compare the evolved controller's robustness against the hand-wired crossed-wiring `Vehicle`'s, tested under the same corruption. Hypothesis: does the evolved network learn some implicit filtering that the fixed wiring structurally cannot?
 
-**3. Evolve the hand-wired controller's own parameters.** Instead of evolving a full neural network, evolve just a couple of scalar parameters the crossed-wiring scheme itself could use (e.g., a per-sensor gain applied before crossing) — a 2-parameter genome instead of the full network's dozens of weights. Compare its evolved performance against the full `NeuralController`. Hypothesis: how much of the neural controller's apparent advantage over Project 1's hand-wiring comes from having many more free parameters to tune, versus genuinely more expressive structure?
+**3. Evolve the hand-wired controller's own parameters.** Instead of evolving a full neural network, evolve just a couple of scalar parameters the crossed-wiring scheme itself could use (e.g., a per-sensor gain applied before crossing) — a 2-parameter genome instead of the full network's dozens of weights. Compare its evolved performance against the full `NeuralController`. Hypothesis: how much of the neural controller's apparent advantage over Project 1's hand-wiring comes from having many more free parameters to tune, versus genuinely more expressive structure? **Careful — for this comparison to actually isolate "parameter count" as the variable, the two controllers need comparable motor-output ranges.** `NeuralController`'s output layer is deliberately Tanh-bounded to `[-1, 1]`, but a raw `gain × sensor` motor command has no such bound — evolution can simply drive the gain magnitude arbitrarily high to make the vehicle move faster, which raises this proximity-based fitness without any smarter steering. If your gain-only controller wins by a wide margin, check whether it's actually moving faster (e.g. log `velocity` — the theoretical max for a Tanh-bounded controller is `vel_gain × 1`), and consider clipping or squashing your gain-scaled motor outputs to the same `[-1, 1]` range before concluding anything about parameter count vs. expressiveness.
 
 **4. Co-evolve sensor placement.** Evolve `angle_offset` (currently fixed at π/2) alongside the network's weights, instead of holding it fixed for the whole population. Hypothesis: does evolution discover a different sensor placement that performs better than the one you were given — and if so, does that placement still make behavioral sense (e.g., still roughly symmetric left-right)?
 
@@ -413,7 +435,7 @@ Organize the body of your report into one section per assignment part. Each sect
 
 **Part 1 — Understand the Neural Controller**
 
-- Your answers to the conceptual questions posed in Part 1 (parameter count for 8 hidden neurons by layer, why Tanh is used on the hidden layer vs. the output layer, and what would change if ReLU replaced Tanh in the hidden layer).
+- Your answers to the conceptual questions posed in Part 1 (parameter count for 8 hidden neurons by layer, what the hidden-layer and output-layer uses of Tanh are each doing and why they're different despite being the same function, and what would change if ReLU replaced Tanh in the hidden layer).
 - *(Optional)* If you attempted the Part 1 advanced architecture challenge (extra layers and/or alternate activation functions), briefly describe what you changed and how it affected evolvability.
 
 **Part 2 — Evolve and Analyze**
@@ -431,7 +453,7 @@ Organize the body of your report into one section per assignment part. Each sect
 
 **Part 4 — Quantitative Analysis**
 
-- Results from 10 independent evolutionary runs with the same parameters: best fitness, convergence generation, and genome size for each.
+- Results from 10 independent evolutionary runs with the same parameters: best fitness and convergence generation for each run (state your definition of "convergence generation"), plus the (constant, since architecture doesn't vary in this part) genome size.
 - A plot or discussion of the variance across runs.
 - Answers to the guiding questions from Part 4 (does evolution always succeed, effect of population size on success rate, typical shape of the convergence curve).
 

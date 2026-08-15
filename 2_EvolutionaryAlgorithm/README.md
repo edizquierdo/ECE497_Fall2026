@@ -32,7 +32,7 @@ Evolutionary algorithms are a class of optimization algorithms inspired by biolo
 
 In this project, we implement two classic evolutionary algorithms:
 
-- **Genetic Algorithm (GA)**: Uses a population of binary/real-coded individuals with mutation and elitism.
+- **Genetic Algorithm (GA)**: Uses a population of binary/real-coded individuals with crossover, mutation, and elitism.
 - **Separable Natural Evolution Strategy (SNES)**: A gradient-free optimization method that evolves the parameters of a search distribution.
 
 Both approaches will be applied to a simple task: maximizing the number of "ON" genes in a genome.
@@ -118,11 +118,14 @@ Useful command-line options include:
 |---------|-------------|---------|
 | `--popsize` | Size of the population | `10` |
 | `--gens` | Number of generations to evolve | `10` |
-| `--algo` | Algorithm to use ("GA" or "ES") | `GA` |
+| `--algorithm` | Algorithm to use ("GA" or "ES") | `GA` |
 | `--genesize` | Length of each individual's genome | `10` |
-| `--minbound` | Minimum gene value | `0.0` |
-| `--maxbound` | Maximum gene value | `1.0` |
+| `--minbound` | Minimum gene value (also the initial sampling range's lower bound) | `0.0` |
+| `--maxbound` | Maximum gene value (also the initial sampling range's upper bound) | `1.0` |
 | `--mut_stdev` | Standard deviation for Gaussian mutation | `0.1` |
+| `--tournament_size` | Tournament size for SBX crossover (GA only) | `3` |
+| `--eta` | Distribution index for SBX crossover (GA only) | `20` |
+| `--no-crossover` | Disable SBX crossover, running a mutation-only GA (GA only) | crossover on |
 | `--no-elitism` | Disable elitism (elitism is enabled by default) | elitism on |
 | `--vizperf` | Visualize fitness over generations | off |
 | `--verbose` | Print progress to console | off |
@@ -130,8 +133,10 @@ Useful command-line options include:
 | `--device` | Hardware device to use ("auto", "cuda", "cuda:0", "mps", "cpu") | "auto" |
 | `--output FILE` | File path to save the best genome, e.g. `best_genome.npy` (the raw continuous genome, not the thresholded 0/1 genotype) | `None` |
 | `--fitness_output FILE` | Save per-generation best/avg/worst fitness to this `.npz` file (keys `best`/`avg`/`worst`), so you can reload and compare fitness curves across configurations without re-running evolution | `None` |
-| `--seed_genome FILE` | Seed the initial population around a genome saved by a previous `--output` run (must match `--genesize`) instead of starting from scratch — one exact copy plus the rest perturbed by `--seed_noise`. Only supported with `--algo GA`, not `--algo ES` | `None` |
+| `--seed_genome FILE` | Seed the initial population around a genome saved by a previous `--output` run (must match `--genesize`) instead of starting from scratch — one exact copy plus the rest perturbed by `--seed_noise`. Only supported with `--algorithm GA`, not `--algorithm ES` | `None` |
 | `--seed_noise` | Stdev of the Gaussian perturbation applied to `--seed_genome` copies | `0.05` |
+| `--fitness` | Fitness function to optimize: `count_ones`, `step`, `rastrigin`, or `sparse`. Only `count_ones` is implemented out of the box — the other three are stubs you'll implement in Part 3 (see below) | `count_ones` |
+| `--sparse_threshold` | Fraction of genes that must be ON before the `sparse` fitness function gives any reward. Ignored unless `--fitness sparse` | `0.7` |
 
 For example,
 
@@ -142,7 +147,14 @@ python evolve.py --popsize 20 --gens 100 --vizperf --device auto
 or
 
 ```bash
-python evolve.py --algo ES --mut_stdev 0.05 --verbose --device cuda
+python evolve.py --algorithm ES --mut_stdev 0.05 --verbose --device cuda
+```
+
+or, comparing crossover on vs. off (GA only):
+
+```bash
+python evolve.py --tournament_size 5 --eta 10 --vizperf
+python evolve.py --no-crossover --vizperf
 ```
 
 ---
@@ -173,7 +185,7 @@ python study.py --min 0.01 --max 0.5 --steps 21 --device auto
 or with custom arguments:
 
 ```bash
-python study.py --min 0.01 --max 0.2 --steps 10 --algo ES --popsize 20 --reps 10 --device cuda --output study_mut_stdev_es.png
+python study.py --min 0.01 --max 0.2 --steps 10 --algorithm ES --popsize 20 --reps 10 --device cuda --output study_mut_stdev_es.png
 ```
 
 Each experiment runs multiple repetitions of the evolutionary algorithm for each `mut_stdev` value and saves a visualization plot showing the final best fitness as a function of the parameter.
@@ -187,13 +199,25 @@ Useful command-line options for `study.py` include:
 | `--steps` | Number of steps between min and max | `21` |
 | `--gens` | Number of generations per run | `50` |
 | `--reps` | Number of repetitions per parameter value | `5` |
-| `--algo` | Evolutionary algorithm to use ("GA" or "ES") | `GA` |
+| `--algorithm` | Evolutionary algorithm to use ("GA" or "ES") — held fixed across the sweep | `GA` |
 | `--popsize` | Population size | `10` |
 | `--genesize` | Gene size / genome length | `10` |
 | `--output` | Output filename for plot | `study_mut_stdev.png` |
+| `--data_output` | Save the raw sweep data (mut_stdev values and their scores) to this `.npz` file (keys `mut_stdev_values`/`scores`), so you can reload and re-plot a sweep without re-running it | `None` |
 | `--seed` | Random seed for reproducibility | `None` |
 | `--verbose` | Print progress information | off |
 | `--device` | Hardware device to use ("auto", "cuda", "cuda:0", "mps", "cpu") | "auto" |
+| `--fitness` | Fitness function to sweep over (see `evolve.py`'s `--fitness`) | `count_ones` |
+| `--sparse_threshold` | Threshold for the `sparse` fitness function | `0.7` |
+
+**`study.py` only sweeps `mut_stdev`.** Part 2 below asks you to investigate five things — population
+size, mutation standard deviation, number of generations, genome length, and algorithm choice — but
+the shipped `study.py` only automates one of them. For the other four, you'll write your own small
+sweep script (or extend a copy of `study.py`) following the same pattern it uses: loop over a range
+of values, repeat several times per value to average out randomness, and plot the result with error
+bars. This is a pattern you'll rely on throughout the course, in increasingly self-directed form as
+you go — `study.py` here is a fully worked example of it, worth reading closely before you write your
+own version.
 
 ---
 
@@ -203,7 +227,7 @@ The evolutionary algorithm in `evolve.py` implements:
 
 - A population of individuals, each with a genome of **real-valued genes** (initialized uniformly in [0, 1])
 - A fitness function that counts genes with values > 0.5 as "ON"
-- Gaussian mutation to introduce variation
+- SBX crossover (GA only, on by default — disable with `--no-crossover`) and Gaussian mutation to introduce variation
 - Elitism to preserve the best solution across generations
 
 **Important note:** Genes are continuous during evolution; the 0.5 threshold is only applied when computing fitness and producing the final genotype output.
@@ -250,6 +274,7 @@ Investigate how behavior changes as you vary:
 - number of generations
 - genome length
 - algorithm choice (GA vs. ES)
+- crossover on vs. off (GA only, `--no-crossover`)
 
 Generate plots that illustrate these relationships and explain the observed performance.
 
@@ -259,6 +284,10 @@ Questions to consider include:
 - Can a very high mutation rate prevent convergence?
 - Is there an optimal mutation rate? Why or why not?
 - How does GA compare to ES in terms of speed and quality?
+- Does disabling crossover change convergence speed, final fitness, or both? For a genome this
+  small, is crossover doing much work at all?
+
+**Note on comparing GA and ES:** look closely at how `run_evolution` constructs the `Problem` for each algorithm. GA keeps `bounds=(minbound, maxbound)` enforced every generation, but ES's `bounds` is set to `None` — genes are only constrained to `[minbound, maxbound]` at generation-0 initialization, and nothing stops ES's search distribution from drifting outside that range afterward. Keep this in mind when interpreting a GA-vs-ES comparison: a difference in final fitness might reflect this asymmetry rather than (or in addition to) a genuine difference in search quality between the two algorithms.
 
 ---
 
@@ -269,6 +298,8 @@ Maximizing ones is a relatively trivial problem. Implement one or more alternati
 - **Step function**: Reward specific patterns (e.g., alternating ON/OFF genes)
 - **Rastrigin-like**: Create a rugged landscape with many local optima
 - **Sparse reward**: Only reward individuals with > X% of genes ON
+
+`evolve.py` already has the plumbing to select a fitness function at the command line (`--fitness {count_ones,step,rastrigin,sparse}`, plus `--sparse_threshold` for the sparse case — see the CLI options table above) and a `count_ones` implementation to use as a reference. What's missing is the actual logic: `step_pattern`, `rastrigin_like`, and `sparse_reward` in `evolve.py` are stubs (marked `TODO (Part 3)`, each currently raising `NotImplementedError`) — your job is to fill in their bodies. You don't need to implement all three; pick at least one to evaluate below.
 
 Evaluate how these changes affect evolutionary dynamics.
 
@@ -285,21 +316,21 @@ Collect data from multiple runs and analyze:
 
 Support your conclusions using appropriate plots and statistics.
 
+**Note on population diversity:** `run_evolution` currently only tracks and returns best/average/worst *fitness* per generation — it doesn't expose anything about the population's spread of gene values. Unlike the other three bullets above, which can be answered by calling `run_evolution` from an external script and analyzing its existing return values, the diversity-vs-performance bullet requires you to modify `run_evolution` itself: inside the generation loop, after `algorithm.step()`, use `algorithm.population.access_values()` to read the current population's gene values and compute some measure of spread across individuals (e.g., the standard deviation of each gene across the population, averaged over genes), then record and return it alongside the fitness arrays.
+
 ---
 
 ## Optional / Advanced Challenge
 
-Parts 1–4 are required. Beyond that, pick **one** of the following four directions to investigate further. Each is open-ended — there's no single right answer, and the point is to form a hypothesis, run the experiment, and report what you found. Only attempt one; go as deep as you like on it.
+Parts 1–4 are required. Beyond that, pick **one** of the following three directions to investigate further. Each is open-ended — there's no single right answer, and the point is to form a hypothesis, run the experiment, and report what you found. Only attempt one; go as deep as you like on it.
 
-**1. Solve a genuinely hard combinatorial problem.** Pick one: the Traveling Salesperson Problem (find the shortest route visiting a list of cities and returning home), the Knapsack Problem (choose which valuable items to pack without exceeding a weight limit), or a Scheduling/Routing problem (assign jobs to workers or trucks to delivery stops under time and capacity constraints). None of these fit the fixed-length real-valued genome `evolve.py` currently uses — you'll need a different genome representation (e.g., a permutation of city indices for TSP, decoded inside a custom `objective_func`) and possibly different operators. How much of `run_evolution`'s structure (population, elitism, generation loop) can you reuse unchanged, and how much has to change because the representation itself changed?
+**1. Write a simple evolutionary algorithm from scratch.** Instead of relying on EvoTorch's built-in `GeneticAlgorithm`, implement your own minimal EA loop directly in plain Python/NumPy — no EvoTorch algorithm classes involved (you can still use an EvoTorch `Problem` for fitness evaluation if you find it convenient, or skip EvoTorch entirely). A good target is a **Microbial GA**: repeatedly pick two random individuals, have the loser copy (part of) the winner's genome with mutation, and put both back in the population — no explicit generations, no separate offspring population, just pairwise "infections" over time. Hypothesis: how does its behavior (convergence speed, final fitness, sensitivity to population size) compare to the `GeneticAlgorithm`-based results from Part 2?
 
-**2. Self-adaptive mutation.** Instead of a fixed `--mut_stdev`, make each individual's own mutation strength part of its genome — a classic self-adaptation trick: extend the genome by one gene encoding that individual's own stdev, and mutate the solution and its stdev gene together each generation. Hypothesis: does self-adaptation reach solution quality comparable to your best hand-tuned `--mut_stdev` from Part 2, without you having to sweep it manually?
+**2. Try an existing algorithm from EvoTorch you haven't used yet.** `evolve.py` only uses `GeneticAlgorithm` and `SNES`, but EvoTorch's `evotorch.algorithms` module ships several others, including `CEM` (Cross-Entropy Method), `CMAES`/`PyCMAES` (Covariance Matrix Adaptation ES), `Cosyne` (Cooperative Synapse Neuroevolution), `MAPElites` (a quality-diversity algorithm — note this one optimizes for a diverse archive of solutions rather than a single best one, so it needs a bit more setup), `PGPE` (Policy Gradients with Parameter-based Exploration), and `SteadyStateGA`. Swap one in for GA/ES in a copy of `run_evolution` and run it on the same `count_ones` task (and, if you like, your Part 3 fitness function too). Hypothesis: how does it compare to GA and ES on speed, final fitness, and sensitivity to its own hyperparameters? Check that algorithm's EvoTorch documentation for what those hyperparameters are and what they control.
 
-**3. A simple diversity-preservation mechanism.** Add fitness sharing (penalize individuals too similar to others in the population) or a restart-on-stagnation rule (reinitialize part of the population if best fitness hasn't improved in N generations) to `run_evolution`. Hypothesis: does this change the "population too small" failure mode you characterized in Part 2 — does a small population with diversity preservation behave more like a larger one, or does it just fail differently?
+**3. Explore an optimization paradigm beyond evolutionary algorithms.** EAs are one family within a broader landscape of derivative-free optimization methods. Pick one adjacent paradigm — for example **particle swarm optimization** (individuals are "particles" with velocity, pulled toward their own best-known position and the swarm's best-known position, rather than selected/mutated) or **multi-objective optimization** (optimizing for more than one fitness criterion at once, where there's no single "best" individual but a Pareto front of trade-offs) — and produce a short comparative write-up: how does its core mechanism differ from the GA/ES approach in this project, what kinds of problems is it particularly well- or poorly-suited for, and (if you have time to implement a small example, even a toy one) how does it perform on `count_ones` or your Part 3 fitness function? This option can be primarily a research/comparison exercise rather than a full implementation if your chosen paradigm doesn't have a convenient existing library to build on.
 
-**4. GA vs. ES on a genuinely multimodal landscape.** Take your Rastrigin-like fitness function from Part 3 and run a controlled head-to-head between GA and ES specifically on *how many local optima each escapes*, not just final fitness or speed. Does whichever algorithm "won" on the trivial `count_ones` task in Part 2 still win here, or does a rugged landscape change which algorithm is actually better suited to the problem?
-
-You're encouraged to explore your own idea beyond these four as well, as long as it's a genuine extension (not just a parameter change already covered in Parts 2–4).
+You're encouraged to explore your own idea beyond these three as well, as long as it's a genuine extension (not just a parameter change already covered in Parts 2–4).
 
 ---
 
@@ -329,7 +360,7 @@ Organize the body of your report into one section per assignment part. Each sect
 
 **Part 2 — Explore Algorithm Parameters**
 
-- Plots illustrating the effect of population size, mutation standard deviation, number of generations, genome length, and algorithm choice (GA vs. ES).
+- Plots illustrating the effect of population size, mutation standard deviation, number of generations, genome length, algorithm choice (GA vs. ES), and crossover on vs. off.
 - For each plot, describe the experimental setup (what was varied, what was held fixed) and interpret the trend you observe.
 - Answers to the guiding questions from Part 2, supported by your results.
 
@@ -344,7 +375,7 @@ Organize the body of your report into one section per assignment part. Each sect
 - Plots and summary statistics addressing each of the four questions in Part 4 (trajectory shape, variance across runs, diversity vs. performance, effect of elitism).
 - Conclusions that are clearly tied to the evidence you present.
 
-**Optional / Advanced Challenge** *(if attempted)*: a section naming which of the four directions you chose (or your own idea), what you changed, your results (with supporting figures), and your interpretation. Omit this section if you didn't attempt a challenge.
+**Optional / Advanced Challenge** *(if attempted)*: a section naming which of the three directions you chose (or your own idea), what you changed, your results (with supporting figures), and your interpretation. Omit this section if you didn't attempt a challenge.
 
 ### General Guidelines
 

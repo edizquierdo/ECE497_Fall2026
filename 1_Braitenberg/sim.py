@@ -10,6 +10,7 @@ Run as:
     python sim.py --noise 0.01 --vizdist
 """
 
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import braitenberg as bt
@@ -31,16 +32,23 @@ def parse_args():
                         help="Turning sensitivity (default: 0.1)")
     parser.add_argument("--noise", type=float, default=0.1,
                         help="Amount of random motion noise (default: 0.1)")
+    parser.add_argument("--wiring", type=str, default="crossed", choices=["crossed", "direct"],
+                        help="Sensor-to-motor wiring scheme (default: crossed). Only has an "
+                             "effect once you implement Vehicle.think()'s OPTIONAL runtime switch.")
     parser.add_argument("--viztraces", action='store_true', help="Enable visualization of individual traces")
     parser.add_argument("--vizdist", action='store_true', help="Enable visualization of average distance")
     parser.add_argument("--scores", action='store_true', help="Print avg distance per repetition")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
+    parser.add_argument("--save", type=str, default=None,
+                        help="Directory to save --viztraces/--vizdist figures to as PNGs, "
+                             "instead of opening them in an interactive window. Useful for "
+                             "batch-generating figures across many parameter values.")
     return parser.parse_args()
 
 
 def run_simulation(duration=5000, reps=10, distance=10, angle_offset=np.pi/2,
-                   turn_gain=0.1, noise=0.1,
-                   viztraces=False, vizdist=False, seed=None):
+                   turn_gain=0.1, noise=0.1, wiring="crossed",
+                   viztraces=False, vizdist=False, seed=None, save=None):
     """Run the Braitenberg vehicle simulation.
 
     Args:
@@ -50,18 +58,24 @@ def run_simulation(duration=5000, reps=10, distance=10, angle_offset=np.pi/2,
         angle_offset: Angle offset between sensors (radians)
         turn_gain: Gain factor for turning response
         noise: Standard deviation of motion noise
+        wiring: Sensor-to-motor wiring scheme ("crossed" or "direct"). Only
+                has an effect once you implement Vehicle.think()'s OPTIONAL
+                runtime switch -- otherwise Vehicle.think() ignores it.
         viztraces: Enable trajectory visualization
         vizdist: Enable distance-to-light over time visualization
         seed: Random seed for reproducibility
+        save: If given, a directory to save --viztraces/--vizdist figures
+              to as PNGs instead of opening an interactive window. Handy
+              when generating many figures across a parameter sweep.
 
     Returns:
-        Currently returns 0 (placeholder). Part 2 of the assignment asks
+        Currently returns 0 (placeholder). Part 3 of the assignment asks
         you to replace this with your own fitness value, computed from
         the recorded trajectories / distances below.
     """
     if seed is not None:
         np.random.seed(seed)
-        
+
     # Variables to store data
     xpos = np.zeros((reps, duration)) if viztraces else None
     ypos = np.zeros((reps, duration)) if viztraces else None
@@ -72,7 +86,7 @@ def run_simulation(duration=5000, reps=10, distance=10, angle_offset=np.pi/2,
 
     for r in range(reps):
         # Create new agent for each repetition (pass standardized option names)
-        agent = bt.Vehicle(angle_offset, turn_gain, noise, distance)
+        agent = bt.Vehicle(angle_offset, turn_gain, noise, distance, wiring)
 
         # Run simulation
         for t in range(duration):
@@ -87,7 +101,7 @@ def run_simulation(duration=5000, reps=10, distance=10, angle_offset=np.pi/2,
             dist[r, t] = agent.distance(light)
 
     # ------------------------------------------------------------------
-    # TODO (Part 2 of the assignment): Define your own fitness function.
+    # TODO (Part 3 of the assignment): Define your own fitness function.
     #
     # At this point you have access to:
     #   dist     : array of shape (reps, duration) with the distance from
@@ -102,6 +116,9 @@ def run_simulation(duration=5000, reps=10, distance=10, angle_offset=np.pi/2,
     # ------------------------------------------------------------------
     fitness = 0
 
+    if save is not None:
+        os.makedirs(save, exist_ok=True)
+
     # Handle visualization
     if viztraces:
         plt.figure(figsize=(8, 8))
@@ -115,7 +132,11 @@ def run_simulation(duration=5000, reps=10, distance=10, angle_offset=np.pi/2,
         plt.title("Vehicle Trajectories")
         plt.axis('equal')
         plt.tight_layout()
-        plt.show()
+        if save is not None:
+            plt.savefig(os.path.join(save, "traces.png"), dpi=150)
+            plt.close()
+        else:
+            plt.show()
 
     if vizdist:
         avg_fitness_over_time = np.mean(dist, axis=0)
@@ -126,7 +147,11 @@ def run_simulation(duration=5000, reps=10, distance=10, angle_offset=np.pi/2,
         plt.title("Fitness Over Time")
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
-        plt.show()
+        if save is not None:
+            plt.savefig(os.path.join(save, "dist.png"), dpi=150)
+            plt.close()
+        else:
+            plt.show()
 
     return fitness
 
@@ -141,9 +166,11 @@ def main():
         angle_offset=args.angle_offset,
         turn_gain=args.turn_gain,
         noise=args.noise,
+        wiring=args.wiring,
         viztraces=args.viztraces,
         vizdist=args.vizdist,
-        seed=args.seed
+        seed=args.seed,
+        save=args.save
     )
 
     if args.scores:

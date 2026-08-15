@@ -124,6 +124,7 @@ def run_transfer(
     controller="feedforward",
     genome_path=None,
     hidden_sizes=64,
+    activation="tanh",
     topology="modular",
     module_size=SM_DEFAULT,
     n_interneurons=0,
@@ -172,7 +173,7 @@ def run_transfer(
         torch.manual_seed(seed)
 
     if controller == "feedforward":
-        model = WalkerController(hidden_sizes=hidden_sizes, obs_size=OBS_SIZE)
+        model = WalkerController(hidden_sizes=hidden_sizes, obs_size=OBS_SIZE, activation=activation)
         if genome_path is not None:
             genome = torch.tensor(np.load(genome_path), dtype=torch.float32)
             torch.nn.utils.vector_to_parameters(genome, model.parameters())
@@ -228,6 +229,8 @@ def parse_args():
                          help="Genome evolved by evolve.py against walker.py. Omit for a random controller.")
     parser.add_argument("--hidden", type=int, nargs="+", default=[64],
                          help="[feedforward only] must match what --genome was evolved with")
+    parser.add_argument("--activation", choices=["tanh", "relu", "sigmoid"], default="tanh",
+                         help="[feedforward only] must match what --genome was evolved with")
     parser.add_argument("--topology", choices=["modular", "fully_connected"], default="modular",
                          help="[ctrnn only] must match what --genome was evolved with")
     parser.add_argument("--module_size", type=int, default=SM_DEFAULT,
@@ -273,6 +276,7 @@ def main():
         controller=args.controller,
         genome_path=args.genome,
         hidden_sizes=hidden_sizes,
+        activation=args.activation,
         topology=args.topology,
         module_size=args.module_size,
         n_interneurons=args.interneurons,

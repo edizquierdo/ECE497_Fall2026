@@ -149,10 +149,12 @@ Useful command-line options include:
 | `--noise` | Amount of random motion noise | 0.1 |
 | `--turn_gain` | Turning sensitivity | 0.1 |
 | `--angle_offset` | Angular separation between the two sensors | π/2 |
+| `--wiring` | Sensor-to-motor wiring scheme (`crossed` or `direct`) — only takes effect once you implement the OPTIONAL runtime switch in `think()` | `crossed` |
 | `--seed` | Random seed for reproducibility | None (random each run) |
 | `--viztraces` | Display robot trajectories | off |
 | `--vizdist` | Plot distance from the light over time | off |
 | `--scores` | Print fitness scores | off |
+| `--save DIR` | Save `--viztraces`/`--vizdist` figures to `DIR` as PNGs instead of opening an interactive window (handy when generating many figures) | off (shows interactively) |
 
 For example,
 
@@ -185,6 +187,13 @@ python study.py --param turn_gain --min 0.01 --max 1.0 --steps 20
 ```
 
 Each experiment generates a figure showing how the chosen parameter influences the robot's performance.
+
+`study.py` is a worked example of a pattern you'll rely on throughout this course: sweep one
+parameter, repeat several times per value to average out randomness, and produce a labeled figure
+rather than judging a single noisy run by eye. Read it before you need to write something like it
+yourself — later projects increasingly expect you to build this kind of experiment-running,
+data-saving, and figure-generating tooling on your own rather than have it handed to you, in
+increasingly sophisticated forms as the term goes on.
 
 ---
 
@@ -233,7 +242,7 @@ should show the vehicle approaching the light source.
 
 **Now experiment.** Before changing anything, write down a prediction: how do you expect the vehicle to behave if you wire it the other way — **direct (ipsilateral)**, where each sensor drives the motor on the *same* side of the body (left sensor → left motor, right sensor → right motor)? Then hand-edit `think()` to use direct wiring, rerun `python sim.py --viztraces`, and compare. Report on whether the behavior matched your prediction, and explain *why* the two wiring schemes lead to such different behavior. Make sure to switch `think()` back to crossed wiring before moving on to the rest of the assignment — the parameter exploration below assumes light-seeking behavior.
 
-**OPTIONAL (advanced):** rather than hand-editing `think()` every time you want to compare schemes, use the `self.wiring` attribute already set in `Vehicle.__init__` (default `"crossed"`) to select between the two schemes at runtime inside `think()`, and add a `--wiring` command-line flag to `sim.py` (and `study.py`, if you want to sweep other parameters under both schemes) so you can switch without touching the code.
+**OPTIONAL (advanced):** rather than hand-editing `think()` every time you want to compare schemes, use the `self.wiring` attribute already set in `Vehicle.__init__` (default `"crossed"`) to select between the two schemes at runtime inside `think()`. A `--wiring` command-line flag is already wired up in both `sim.py` and `study.py` (it just constructs the `Vehicle` with whichever scheme you pass in) — once `think()` reads `self.wiring`, `python sim.py --wiring direct --viztraces` will switch schemes with no code changes needed.
 
 ---
 
@@ -249,10 +258,16 @@ There are many components to this simulation. Of particular importance are the m
 | `--noise` | Amount of random motion noise | 0.1 |
 | `--turn_gain` | Turning sensitivity | 0.1 |
 | `--angle_offset` | Angular separation between the two sensors | π/2 |
+| `--wiring` | Sensor-to-motor wiring scheme (`crossed` or `direct`) — only takes effect once you implement the OPTIONAL runtime switch in `think()` | `crossed` |
 | `--seed` | Random seed for reproducibility | None (random each run) |
 | `--viztraces` | Display robot trajectories | off |
 | `--vizdist` | Plot distance from the light over time | off |
 | `--scores` | Print fitness scores | off |
+| `--save DIR` | Save `--viztraces`/`--vizdist` figures to `DIR` as PNGs instead of opening an interactive window (handy when generating many figures) | off (shows interactively) |
+
+> **Note:** every repetition starts from the exact same position and heading — the vehicle always
+> begins at the origin facing directly toward the light. The only thing that varies between
+> repetitions is the random noise. Keep that in mind as you experiment with `noise` in particular.
 
 Experiment by varying each one of these parameters and observe the changes in the traces (`--viztraces`) and the distances (`--vizdist`).
 
@@ -319,7 +334,7 @@ Parts 1–4 are required. Beyond that, pick **one** of the following four direct
 
 **1. Multiple light sources.** Add a second `Light` instance and modify `Vehicle.sense()` to combine readings from both (e.g., sum the inverse-distance intensities from each, or take the max). Before running anything, predict: will the vehicle settle at a point between the two lights, orbit between them, or commit to the nearer one? Then test it under a few different placements — lights close together vs. far apart, and symmetric vs. off-to-one-side — and see whether your prediction held.
 
-**2. Sensor asymmetry and fault injection.** Give the two sensors different gains, or add sensor-specific noise (e.g., double `noise_stdev`'s effective contribution on the left sensor only), and use `study.py`-style sweeps to find how much asymmetry the crossed-wiring controller can tolerate before it stops reliably reaching the light. Is the breakdown gradual (fitness degrades smoothly) or is there a sharp threshold?
+**2. Sensor asymmetry and fault injection.** Give the two sensors different gains, or add sensor-specific noise (a new Gaussian noise term added directly to one sensor's reading in `sense()` — note that the existing `noise_stdev` only ever affects actuator/orientation noise in `move()`, so there's no existing per-sensor noise to "turn up" on one side; you're adding a new noise source, not scaling an existing one), and use `study.py`-style sweeps to find how much asymmetry the crossed-wiring controller can tolerate before it stops reliably reaching the light. Is the breakdown gradual (fitness degrades smoothly) or is there a sharp threshold?
 
 **3. Add inertia to the movement model.** `Vehicle.move()` currently sets orientation and velocity instantaneously from the current motor commands every step. Modify it so turning rate and speed change gradually toward their commanded values (e.g., exponential smoothing) instead of jumping there immediately. Hypothesis: does this more realistic inertia make trajectories smoother, or does it interact badly with `noise_stdev` — since noise is now effectively integrated over time rather than applied fresh each step?
 

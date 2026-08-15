@@ -15,7 +15,7 @@ from evotorch import Problem
 from evotorch.algorithms import GeneticAlgorithm
 from evotorch.operators import SimulatedBinaryCrossOver, GaussianMutation
 
-from neural_controller import NeuralController
+from neural_controller import NeuralController, genome_size
 
 # Suppress EvoTorch warnings
 logging.getLogger("evotorch").setLevel(logging.WARNING)
@@ -28,8 +28,25 @@ def parse_args():
     parser.add_argument(
         "--hidden",
         type=int,
-        default=8,  
+        default=8,
         help="Number of hidden neurons (default: 8)",
+    )
+    parser.add_argument(
+        "--hidden_sizes",
+        type=int,
+        nargs="+",
+        default=None,
+        help="List of hidden layer sizes, e.g. --hidden_sizes 16 16 for two "
+             "16-neuron hidden layers. Overrides --hidden when given. "
+             "(default: None, i.e. use the single --hidden layer)",
+    )
+    parser.add_argument(
+        "--activation",
+        type=str,
+        default="tanh",
+        choices=["tanh", "relu", "sigmoid"],
+        help="Activation function applied on hidden layer(s). The output "
+             "layer always uses Tanh regardless of this setting. (default: tanh)",
     )
     parser.add_argument(
         "--popsize",
@@ -60,6 +77,20 @@ def parse_args():
         type=float,
         default=20,
         help="Distribution index for SBX crossover (default: 20)",
+    )
+    parser.add_argument(
+        "--no-crossover",
+        action="store_false",
+        dest="use_crossover",
+        help="Disable SBX crossover, running a mutation-only GA (default: crossover enabled)",
+    )
+    parser.add_argument(
+        "--init_bounds",
+        type=float,
+        nargs=2,
+        default=[-1.0, 1.0],
+        metavar=("LOW", "HIGH"),
+        help="Initial genome sampling bounds (default: -1.0 1.0)",
     )
     parser.add_argument(
         "--no-elitism",
@@ -153,7 +184,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def make_fitness_fn(hidden_size, episodes_per_eval=5, duration=500, distance=10.0, angle_offset=np.pi / 2, turn_gain=0.1, noise_stdev=0.1):
+def make_fitness_fn(hidden_size, episodes_per_eval=5, duration=500, distance=10.0, angle_offset=np.pi / 2, turn_gain=0.1, noise_stdev=0.1, hidden_sizes=None, activation="tanh"):
     """
     Create a fitness function that evaluates a genome as a neural controller.
 
@@ -183,11 +214,19 @@ def make_fitness_fn(hidden_size, episodes_per_eval=5, duration=500, distance=10.
         """Evaluate a genome by running it in the Braitenberg simulation."""
         total_reward = 0.0
 
-        for _ in range(episodes_per_eval):
-            # Create controller and load genome
-            controller = NeuralController(hidden_size=hidden_size)
-            torch.nn.utils.vector_to_parameters(genome, controller.parameters())
+        # Create controller and load genome once per genome evaluation --
+        # genome/architecture don't change across the episodes_per_eval loop
+        # below, so there's no need to rebuild the controller each episode.
+        # Note: nn.Linear's default (immediately-overwritten) weight init
+        # still draws from torch's global RNG, so building the controller
+        # fewer times per evaluation shifts the exact RNG stream consumed by
+        # later GA operators -- a given --seed will no longer reproduce
+        # fitness curves saved by evolve.py before this change, though it's
+        # just as valid a random stream and doesn't change evolved quality.
+        controller = NeuralController(hidden_size=hidden_size, hidden_sizes=hidden_sizes, activation=activation)
+        torch.nn.utils.vector_to_parameters(genome, controller.parameters())
 
+        for _ in range(episodes_per_eval):
             # Initialize light source at origin (0, 0)
             light = Light()
 
@@ -233,6 +272,7 @@ def run_evolution(
     mut_stdev=0.5,
     tournament_size=3,
     eta=20,
+    use_crossover=True,
     elitism=True,
     verbose=False,
     seed=None,
@@ -244,6 +284,9 @@ def run_evolution(
     episodes_per_eval=5,
     seed_genome_path=None,
     seed_noise=0.05,
+    hidden_sizes=None,
+    activation="tanh",
+    init_bounds=(-1.0, 1.0),
 ):
     """
     Run the neuroevolution process.
@@ -255,6 +298,8 @@ def run_evolution(
         mut_stdev: Mutation standard deviation.
         tournament_size: Tournament size for crossover.
         eta: Distribution index for SBX.
+        use_crossover: If False, run a mutation-only GA (SBX crossover removed
+            from the operator list). Default True.
         elitism: Whether to use elitism.
         verbose: Print progress if True.
         seed: Random seed.
@@ -268,6 +313,11 @@ def run_evolution(
             seeds the initial population around this genome (one exact copy plus the
             rest perturbed by `seed_noise`) instead of starting from scratch.
         seed_noise: Stdev of the Gaussian perturbation applied to seed_genome_path copies.
+        hidden_sizes: Optional list of hidden layer sizes (overrides hidden_size).
+        activation: Name of the activation function applied on hidden layer(s)
+            ('tanh', 'relu', or 'sigmoid'; default: 'tanh').
+        init_bounds: (low, high) tuple for the EA's initial genome sampling range
+            (default: (-1.0, 1.0)).
 
     Returns:
         best_fit, avg_fit, worst_fit, best_genome, best_fitness
@@ -285,40 +335,36 @@ def run_evolution(
         angle_offset=angle_offset,
         turn_gain=turn_gain,
         noise_stdev=noise_stdev,
+        hidden_sizes=hidden_sizes,
+        activation=activation,
     )
 
-    # Compute genome length
-    temp = NeuralController(hidden_size=hidden_size)
-    n_genes = sum(p.numel() for p in temp.parameters())
+    # Compute genome length analytically -- no need to instantiate a network
+    # just to count its parameters (see genome_size() in neural_controller.py).
+    n_genes = genome_size(hidden_size=hidden_size, hidden_sizes=hidden_sizes)
 
     problem = Problem(
         objective_sense="max",
         objective_func=fitness_fn,
         solution_length=n_genes,
-        # Matches the initial weight range used in Projects 3, 5, and 6.
-        # An empirical check on this project's own task didn't find a
-        # meaningful difference between this range and (-5.0, 5.0) --
-        # this project's smooth 1/(1+distance) fitness doesn't appear to
-        # suffer from the Tanh-saturation issue a wider range caused on
-        # Project 6's harsher, all-or-nothing walking task -- so this is
-        # a consistency choice, not a fix for an observed problem here.
-        initial_bounds=(-1.0, 1.0),
+        initial_bounds=tuple(init_bounds),
         dtype=torch.float32,
     )
 
     # Create algorithm
+    operators = []
+    if use_crossover:
+        # eta (SBX's "distribution index"): higher = offspring cluster
+        # closer to their parents, lower = offspring spread further
+        # apart. tournament_size: how many individuals compete for
+        # each parent slot; higher = stronger pressure toward
+        # already-fit individuals.
+        operators.append(SimulatedBinaryCrossOver(problem, tournament_size=tournament_size, eta=eta))
+    operators.append(GaussianMutation(problem, stdev=mut_stdev))
     algorithm = GeneticAlgorithm(
         problem,
         popsize=popsize,
-        operators=[
-            # eta (SBX's "distribution index"): higher = offspring cluster
-            # closer to their parents, lower = offspring spread further
-            # apart. tournament_size: how many individuals compete for
-            # each parent slot; higher = stronger pressure toward
-            # already-fit individuals.
-            SimulatedBinaryCrossOver(problem, tournament_size=tournament_size, eta=eta),
-            GaussianMutation(problem, stdev=mut_stdev),
-        ],
+        operators=operators,
         elitist=elitism,
     )
 
@@ -331,8 +377,8 @@ def run_evolution(
         if seed_genome.numel() != n_genes:
             raise ValueError(
                 f"Seed genome at '{seed_genome_path}' has {seed_genome.numel()} values, but "
-                f"the current --hidden architecture expects {n_genes}. Make sure --hidden "
-                f"matches what the seed genome was evolved with."
+                f"the current --hidden/--hidden_sizes architecture expects {n_genes}. Make sure "
+                f"these match what the seed genome was evolved with."
             )
         values = algorithm.population.access_values(keep_evals=False)
         values[0] = seed_genome  # one exact, unperturbed copy
@@ -391,7 +437,8 @@ def main():
 
     print(
         f"Evolving neural controller for Braitenberg vehicle: "
-        f"hidden={args.hidden}, popsize={args.popsize}, gens={args.gens}, duration={args.duration}, "
+        f"hidden={args.hidden}, hidden_sizes={args.hidden_sizes}, activation={args.activation}, "
+        f"popsize={args.popsize}, gens={args.gens}, duration={args.duration}, "
         f"angle_offset={args.angle_offset}, turn_gain={args.turn_gain}, noise={args.noise}, "
         f"episodes_per_eval={args.episodes_per_eval}"
     )
@@ -401,11 +448,14 @@ def main():
 
     best_fit, avg_fit, worst_fit, best_genome, best_fitness = run_evolution(
         hidden_size=args.hidden,
+        hidden_sizes=args.hidden_sizes,
+        activation=args.activation,
         popsize=args.popsize,
         gens=args.gens,
         mut_stdev=args.mut_stdev,
         tournament_size=args.tournament_size,
         eta=args.eta,
+        use_crossover=args.use_crossover,
         elitism=args.elitism,
         verbose=args.verbose,
         seed=args.seed,
@@ -417,6 +467,7 @@ def main():
         episodes_per_eval=args.episodes_per_eval,
         seed_genome_path=args.seed_genome,
         seed_noise=args.seed_noise,
+        init_bounds=tuple(args.init_bounds),
     )
 
     print(f"\nBest fitness achieved: {best_fitness:.3f}")

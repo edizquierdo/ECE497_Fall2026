@@ -16,7 +16,7 @@ Supported parameters (choose with --param):
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
-from neural import run_neuroevolution, generate_random_problem, generate_convex_problem, XOR_INPUTS, XOR_SIGNS
+from evolve import run_neuroevolution, generate_random_problem, generate_convex_problem, XOR_INPUTS, XOR_SIGNS, TASKS
 
 
 # ─────────────────────────────────────────────────────────────
@@ -120,6 +120,36 @@ def parse_args():
         type=str,
         default="auto",
         help="Execution device: auto, cpu, cuda, mps, etc. (default: auto)",
+    )
+    parser.add_argument(
+        "--activation",
+        type=str,
+        default="tanh",
+        choices=["tanh", "sigmoid", "relu"],
+        help="Fixed (non-swept) activation function (default: tanh).",
+    )
+    parser.add_argument(
+        "--fitness_mode",
+        type=str,
+        default="sign",
+        choices=["sign", "mse"],
+        help="Fixed (non-swept) fitness mode (default: sign).",
+    )
+    parser.add_argument(
+        "--task",
+        type=str,
+        default="xor",
+        choices=["xor", "and", "or", "xnor"],
+        help="Boolean task to study when --problem xor (default: xor).",
+    )
+    parser.add_argument(
+        "--hidden_sizes",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Fixed hidden-layer-sizes override, e.g. --hidden_sizes 4 4. Ignored/"
+             "meaningless when --param hidden, since --param hidden sweeps the single "
+             "--hidden value that hidden_sizes would override (default: None).",
     )
     return parser.parse_args()
 
@@ -253,7 +283,7 @@ def main():
     elif args.problem == "convex":
         problem_inputs, problem_signs = generate_convex_problem(num_points=args.points)
     else:
-        problem_inputs, problem_signs = XOR_INPUTS, XOR_SIGNS
+        problem_inputs, problem_signs = TASKS[args.task]
 
     if args.verbose:
         print(f"Studying {defaults['label'].lower()}")
@@ -270,8 +300,10 @@ def main():
 
     # Fixed simulation parameters (the swept one, if it's here, is removed)
     fixed = dict(FIXED_DEFAULTS)
-    fixed["activation"] = "tanh"
+    fixed["activation"] = args.activation
     fixed["device"] = args.device
+    fixed["fitness_mode"] = args.fitness_mode
+    fixed["hidden_sizes"] = args.hidden_sizes
     if args.param in fixed:
         del fixed[args.param]
 

@@ -58,10 +58,10 @@ One exception to the 10-point pattern: Project 6 offers up to **1 additional poi
 
 Each project is self-contained: it has its own `requirements.txt` and its own virtual environment, created from inside that project's folder. There's no single shared environment for the whole course — set one up fresh the first time you start each project, following the "Installation" section of that project's own README.
 
-1. **Start with Project 1.** From inside `1_Braitenberg/`, follow its README's Installation section to create a virtual environment and install `requirements.txt`. Then confirm your environment works:
+1. **Start with Project 1.** From inside `1_Braitenberg/assignment/`, follow its README's Installation section to create a virtual environment and install `requirements.txt`. Then confirm your environment works:
 
    ```bash
-   cd 1_Braitenberg
+   cd 1_Braitenberg/assignment
    python sim.py --viztraces
    ```
 

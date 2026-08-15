@@ -81,6 +81,10 @@ def parse_args():
                          help="[feedforward only] Hidden layer size(s). Give one value for a "
                               "single hidden layer, or several for a deeper network, "
                               "e.g. --hidden 64 64")
+    parser.add_argument("--activation", choices=["tanh", "relu", "sigmoid"], default="tanh",
+                         help="[feedforward only] Activation function on the hidden layer(s). "
+                              "The output layer always stays Sigmoid regardless, so actions "
+                              "stay in [0, 1].")
 
     # -- ctrnn-only --
     parser.add_argument("--topology", choices=["modular", "fully_connected"], default="modular",
@@ -205,6 +209,7 @@ def _sensors_on_for_episode(mode: str, episode_index: int) -> bool:
 def make_fitness_fn(
     controller="feedforward",
     hidden_sizes=64,
+    activation="tanh",
     topology="modular", module_size=SM_DEFAULT, n_interneurons=0, mode="rpg",
     episodes_per_eval=3, seed=None, duration=220.0,
     patience=None, min_progress=0.5,
@@ -221,7 +226,7 @@ def make_fitness_fn(
 
     def fitness_fn(genome: torch.Tensor) -> torch.Tensor:
         if controller == "feedforward":
-            model = WalkerController(hidden_sizes=hidden_sizes, obs_size=OBS_SIZE)
+            model = WalkerController(hidden_sizes=hidden_sizes, obs_size=OBS_SIZE, activation=activation)
             torch.nn.utils.vector_to_parameters(genome, model.parameters())
             model.eval()
         else:
@@ -266,6 +271,7 @@ def make_fitness_fn(
 def run_evolution(
     controller="feedforward",
     hidden_sizes=64,
+    activation="tanh",
     topology="modular", module_size=SM_DEFAULT, n_interneurons=0, mode="rpg",
     algo="ga",
     popsize=50,
@@ -290,7 +296,7 @@ def run_evolution(
         np.random.seed(seed)
 
     fitness_fn = make_fitness_fn(
-        controller=controller, hidden_sizes=hidden_sizes,
+        controller=controller, hidden_sizes=hidden_sizes, activation=activation,
         topology=topology, module_size=module_size, n_interneurons=n_interneurons, mode=mode,
         episodes_per_eval=episodes_per_eval, seed=seed, duration=duration,
         patience=patience, min_progress=min_progress,
@@ -406,7 +412,8 @@ def main():
     if args.controller == "feedforward":
         print(
             f"Evolving feedforward controller for six-legged walker: "
-            f"algorithm={args.algorithm}, hidden={hidden_sizes}, obs_size={OBS_SIZE}, "
+            f"algorithm={args.algorithm}, hidden={hidden_sizes}, activation={args.activation}, "
+            f"obs_size={OBS_SIZE}, "
             f"popsize={args.popsize}, gens={args.gens}, "
             f"episodes_per_eval={args.episodes_per_eval}, duration={args.duration}, "
             f"patience={patience}, min_progress={args.min_progress}, workers={args.workers}"
@@ -432,6 +439,7 @@ def main():
     best_fit, avg_fit, worst_fit, best_genome, best_fitness = run_evolution(
         controller=args.controller,
         hidden_sizes=hidden_sizes,
+        activation=args.activation,
         topology=args.topology,
         module_size=args.module_size,
         n_interneurons=args.interneurons,

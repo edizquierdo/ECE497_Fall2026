@@ -48,6 +48,23 @@ def parse_args():
         help="Number of hidden neurons in network (default: 8)",
     )
     parser.add_argument(
+        "--hidden_sizes",
+        type=int,
+        nargs="+",
+        default=None,
+        help="List of hidden layer sizes, e.g. --hidden_sizes 16 16. Overrides "
+             "--hidden when given. Must match the architecture the genome was "
+             "evolved with. (default: None, i.e. use the single --hidden layer)",
+    )
+    parser.add_argument(
+        "--activation",
+        type=str,
+        default="tanh",
+        choices=["tanh", "relu", "sigmoid"],
+        help="Activation function applied on hidden layer(s); must match what the "
+             "genome was evolved with. (default: tanh)",
+    )
+    parser.add_argument(
         "--viztraces",
         action="store_true",
         help="Visualize pole angle over time",
@@ -79,6 +96,8 @@ def run_simulation(
     viztraces=False,
     render=False,
     seed=None,
+    hidden_sizes=None,
+    activation="tanh",
 ):
     """
     Run the CartPole simulation.
@@ -91,6 +110,8 @@ def run_simulation(
         viztraces: Visualize pole angle over time if True.
         render: Render the environment with Gymnasium's human renderer if True.
         seed: Random seed.
+        hidden_sizes: Optional list of hidden layer sizes (overrides hidden_size).
+        activation: Name of the activation function applied on hidden layer(s).
 
     Returns:
         Final score (average fitness, where higher = better).
@@ -100,7 +121,7 @@ def run_simulation(
         torch.manual_seed(seed)
 
     # Create controller
-    controller = NeuralController(hidden_size=hidden_size)
+    controller = NeuralController(hidden_size=hidden_size, hidden_sizes=hidden_sizes, activation=activation)
 
     if genome_path is not None:
         # Load evolved genome
@@ -111,9 +132,9 @@ def run_simulation(
         if genome.numel() != expected_n:
             raise ValueError(
                 f"Genome has {genome.numel()} values, but a network with "
-                f"hidden_size={hidden_size} expects {expected_n}. "
+                f"hidden_size={hidden_size}, hidden_sizes={hidden_sizes} expects {expected_n}. "
                 f"This genome was almost certainly evolved with a different "
-                f"--hidden value — pass the matching --hidden to sim.py. "
+                f"--hidden/--hidden_sizes value — pass the matching architecture to sim.py. "
                 f"(torch.nn.utils.vector_to_parameters will NOT raise an "
                 f"error on a size mismatch; it silently loads garbage.)"
             )
@@ -206,6 +227,8 @@ def main():
     final_avg, episode_lengths = run_simulation(
         genome_path=args.genome,
         hidden_size=args.hidden,
+        hidden_sizes=args.hidden_sizes,
+        activation=args.activation,
         duration=args.duration,
         reps=args.reps,
         viztraces=args.viztraces,

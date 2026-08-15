@@ -45,6 +45,8 @@ def parse_args():
                          help="Genome evolved by evolve.py against walker.py. Omit for a random controller.")
     parser.add_argument("--hidden", type=int, nargs="+", default=[64],
                          help="[feedforward only] must match what --genome was evolved with")
+    parser.add_argument("--activation", choices=["tanh", "relu", "sigmoid"], default="tanh",
+                         help="[feedforward only] must match what --genome was evolved with")
     parser.add_argument("--topology", choices=["modular", "fully_connected"], default="modular",
                          help="[ctrnn only] must match what --genome was evolved with")
     parser.add_argument("--module_size", type=int, default=SM_DEFAULT,
@@ -85,7 +87,7 @@ def main():
     torch.manual_seed(args.seed)
 
     if args.controller == "feedforward":
-        model = WalkerController(hidden_sizes=hidden_sizes, obs_size=OBS_SIZE)
+        model = WalkerController(hidden_sizes=hidden_sizes, obs_size=OBS_SIZE, activation=args.activation)
         if args.genome is not None:
             genome = torch.tensor(np.load(args.genome), dtype=torch.float32)
             torch.nn.utils.vector_to_parameters(genome, model.parameters())

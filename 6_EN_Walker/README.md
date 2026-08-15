@@ -309,7 +309,8 @@ works too.)
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--hidden` | Hidden layer size(s). Give one value for a single hidden layer, or several for a deeper network, e.g. `--hidden 64 64 64` | `64` |
-| `--patience` | Early-terminate an episode once the walker hasn't advanced `--min_progress` over the trailing `--patience` seconds. `0` disables this and always runs the full `--duration` | `10.0` |
+| `--activation` | Activation function on the hidden layer(s): `tanh`, `relu`, or `sigmoid`. The output layer always stays Sigmoid regardless, so actions stay in `[0, 1]` | `tanh` |
+| `--patience` | Early-terminate an episode once the walker hasn't advanced `--min_progress` over the trailing `--patience` seconds. `0` disables this and always runs the full `--duration` | `0.0` |
 | `--min_progress` | Minimum forward-position advance required over the trailing `--patience` window to keep an episode going (only used if `--patience > 0`) | `0.5` |
 
 ### Phase B: CTRNN
@@ -384,6 +385,7 @@ you asked for.
 | `--controller` | `feedforward` or `ctrnn` — must match how `--genome` was evolved | `feedforward` |
 | `--genome FILE` | Path to a saved genome (`.npy`). Omit to use a randomly initialized controller | `None` |
 | `--hidden` | [feedforward only] must match what you evolved with | `64` |
+| `--activation` | [feedforward only] must match what you evolved with | `tanh` |
 | `--topology`, `--module_size`, `--interneurons` | [ctrnn only] must match what you evolved with | `modular`, `3`, `0` |
 | `--mode` | [ctrnn only] sensor condition to run under (`cpg`/`rpg`/`mpg`) | `rpg` |
 | `--duration` | Simulated seconds per episode | `220.0` |
@@ -449,7 +451,7 @@ python hexapod_bridge.py --controller ctrnn --genome ctrnn_best.npy --duration 5
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--controller`, `--genome`, `--hidden`, `--topology`, `--module_size`, `--interneurons`, `--mode` | Same meaning as in `sim.py` — must match how the genome was evolved | see `sim.py` |
+| `--controller`, `--genome`, `--hidden`, `--activation`, `--topology`, `--module_size`, `--interneurons`, `--mode` | Same meaning as in `sim.py` — must match how the genome was evolved | see `sim.py` |
 | `--torque_scale` | Scale on the mapped **sweep** torque. `walker.py`'s action magnitudes were never tuned against real actuator gains, so this is worth sweeping rather than assuming 1.0 is right | `1.0` |
 | `--timescale` | [`--controller ctrnn` only] Scales the CTRNN's own internal clock relative to the real hexapod's physical clock (`dt` passed to `act()` = `TS * timescale`). The genome evolved with its internal clock and `walker.py`'s body advancing in lockstep at `TS=0.1s`/tick, but `hexapod_env.py`'s real physical step is only `0.05s`, so the two clocks don't automatically line up — worth exploring together with `--lift_gain` (see `hexapod_lift_sweep.py`) rather than assuming the default is right | `4.0` |
 | `--lift_gain` | Multiplier on the closed-loop PD lift controller's gains (see `hexapod_bridge.py`'s module docstring), independent of `--torque_scale` (which scales sweep only) — worth exploring together with `--timescale` | `2.0` |
@@ -474,7 +476,7 @@ python hexapod_render.py --controller feedforward --hidden 16 --genome ff_best.n
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--controller`, `--genome`, `--hidden`, `--topology`, `--module_size`, `--interneurons`, `--mode`, `--torque_scale`, `--timescale`, `--lift_gain`, `--seed` | Same meaning as `hexapod_bridge.py` | see above |
+| `--controller`, `--genome`, `--hidden`, `--activation`, `--topology`, `--module_size`, `--interneurons`, `--mode`, `--torque_scale`, `--timescale`, `--lift_gain`, `--seed` | Same meaning as `hexapod_bridge.py` | see above |
 | `--duration` | Simulated seconds to render — same convention as `hexapod_bridge.py`'s `--duration` (steps rendered = `duration / 0.05`) | `15.0` |
 | `--out` | Output video path (`.mp4` recommended; `.gif` also works) | `hexapod.mp4` |
 | `--width`, `--height` | Frame resolution in pixels | `640`, `480` |
@@ -502,7 +504,7 @@ python hexapod_lift_sweep.py --controller ctrnn --genome ctrnn_best.npy \
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--controller`, `--genome`, `--hidden`, `--topology`, `--module_size`, `--interneurons`, `--mode`, `--torque_scale`, `--duration` | Same meaning as `hexapod_bridge.py` (`--genome` is required here) | see above |
+| `--controller`, `--genome`, `--hidden`, `--activation`, `--topology`, `--module_size`, `--interneurons`, `--mode`, `--torque_scale`, `--duration` | Same meaning as `hexapod_bridge.py` (`--genome` is required here) | see above |
 | `--lift_gains` | List of lift_gain values to try | `1.0 1.5 2.0 2.5 3.0` |
 | `--timescales` | List of timescale values to try (ignored, held at `1.0`, for `--controller feedforward`) | `1.0 2.0 4.0 8.0 16.0` |
 | `--reps` | Repetitions per (lift_gain, timescale) combination, each a different seed | `5` |
@@ -608,7 +610,11 @@ configurations, run each for the same population size, generation count,
 and `--episodes_per_eval` (use `--seed` so runs are comparable), and
 compare best fitness reached and how quickly it got there.
 
-Use `--fitness_output` to save each run's fitness-over-generations curve
+**There's no `study.py` in this project (unlike Projects 1–3)** — same
+reason as Projects 4 and 5: Parts 2 and 5 below ask you to compare several
+configurations (hidden sizes, topologies, modes), and running that kind of
+sweep and plotting the result is left as an exercise. Use `--fitness_output`
+to save each run's fitness-over-generations curve
 to disk instead of (or in addition to) just eyeballing `--vizperf`, so you
 can reload several runs afterward and plot them together:
 
@@ -692,9 +698,10 @@ detail, run with `--workers none` to skip Ray entirely, or set
 `WalkerController` (feedforward):
 - **Input layer**: 6 neurons (one per leg's angle sensor)
 - **Hidden layer(s)**: one or more layers, each with a configurable number of
-  neurons and Tanh activation. Pass a single int (`hidden_sizes=64`) for one
-  hidden layer, or a sequence (`hidden_sizes=(64, 64, 64)`) for a deeper
-  network.
+  neurons and a configurable activation (`tanh`/`relu`/`sigmoid`, default
+  `tanh` — see `--activation`). Pass a single int (`hidden_sizes=64`) for
+  one hidden layer, or a sequence (`hidden_sizes=(64, 64, 64)`) for a
+  deeper network.
 - **Output layer**: 18 neurons (forward/backward/foot per leg) with Sigmoid
   activation, so actions come out in [0, 1].
 - The genome is a flat vector containing all weights and biases in

@@ -46,10 +46,11 @@ def parse_args():
         help="Number of repetitions per parameter value (default: 5)"
     )
     parser.add_argument(
-        "--algo",
+        "--algorithm",
         type=str,
         default="GA",
         choices=["GA", "ES"],
+        dest="algo",
         help="Evolutionary algorithm to use (default: GA)"
     )
     parser.add_argument(
@@ -87,6 +88,28 @@ def parse_args():
         action="store_true",
         help="Print progress information"
     )
+    parser.add_argument(
+        "--fitness",
+        type=str,
+        default="count_ones",
+        choices=["count_ones", "step", "rastrigin", "sparse"],
+        help="Fitness function to optimize (default: count_ones)"
+    )
+    parser.add_argument(
+        "--sparse_threshold",
+        type=float,
+        default=0.7,
+        help="Fraction of genes that must be ON before the 'sparse' fitness function "
+             "gives any reward. Ignored unless --fitness sparse is used."
+    )
+    parser.add_argument(
+        "--data_output",
+        type=str,
+        default=None,
+        help="Save the raw sweep data (mut_stdev values and their scores) to this "
+             ".npz file (keys: 'mut_stdev_values', 'scores'), so the sweep can be "
+             "reloaded and re-plotted later without re-running evolution."
+    )
     return parser.parse_args()
 
 
@@ -112,7 +135,7 @@ def run_evolution_reps(**kwargs):
         if base_seed is not None:
             kwargs["seed"] = base_seed + r
 
-        best_fit, avg_fit, worst_fit, best_genotype = run_evolution(**kwargs)
+        best_fit, avg_fit, worst_fit, best_genotype, best_values = run_evolution(**kwargs)
         final_fitnesses.append(best_fit[-1])
 
     return np.mean(final_fitnesses)
@@ -169,6 +192,8 @@ def main():
         "device": args.device,
         "seed": args.seed,
         "verbose": False,  # Suppress per-generation output during study
+        "fitness": args.fitness,
+        "sparse_threshold": args.sparse_threshold,
     }
 
     if args.verbose:
@@ -186,6 +211,10 @@ def main():
         print("Results summary:")
         for val, score in zip(mut_stdev_values, scores):
             print(f"  mut_stdev={val:.4f} -> fitness={score:.4f}")
+
+    if args.data_output:
+        np.savez(args.data_output, mut_stdev_values=mut_stdev_values, scores=scores)
+        print(f"Raw sweep data saved to: {args.data_output}")
 
     # Create visualization
     plt.figure(figsize=(10, 6))

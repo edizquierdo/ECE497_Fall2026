@@ -301,7 +301,7 @@ Think carefully about what aspect of behavior your fitness function rewards. Pos
 
 Write up a precise description of your fitness function. This should include a description of your evaluation: how many times is the agent ran, for how long, from what kind of starting positions, what is being measured, how is that measure being averaged to produced a single index. The fitness function can include a descriptive explanation and it can also include some formulas.
 
-Note: Your fitness score calculation could be such that a higher score means better performance or the other way around a score of 0 means a perfect performance and a higher score means worst performance. That's up to you. However, keep in mind that `study.py` currently assumest that your fitness will be such that lower score is better and higher score is worst. You can change that around. 
+Note: Your fitness score calculation could be such that a higher score means better performance or the other way around a score of 0 means a perfect performance and a higher score means worst performance. Either works, but we recommend the former (higher score means better performance). More over, we highly recommend that you create a fitness that can be bounded, for example, between [0, 1]. That makes interpreting the fitness easier. Ultimately it is up to you. One way or another, keep in mind that `study.py` currently assumest that the higher score is better fitness. 
 
 Once your fitness function is in place, use `study.py` to sweep the **same parameter you chose in Part 2**, for example:
 

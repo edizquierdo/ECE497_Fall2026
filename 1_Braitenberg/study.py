@@ -186,15 +186,14 @@ def main():
     plt.title(f"Braitenberg Vehicle: Score vs {args.param.capitalize()}", fontsize=14)
     plt.grid(True, alpha=0.3)
 
-    # Highlight best and worst parameter values
-    # Lower score = robot stays closer to light = better performance 
-    # Note: if your fitness is such that higher score means better performance, then you can change this around.
-    min_idx = np.argmin(scores)
-    max_idx = np.argmax(scores)
-    plt.scatter([param_values[min_idx]], [scores[min_idx]],
-                color='green', s=150, zorder=5, label=f'Best: {param_values[min_idx]:.3f}')
-    plt.scatter([param_values[max_idx]], [scores[max_idx]],
-                color='red', s=150, zorder=5, label=f'Worst: {param_values[max_idx]:.3f}')
+    # Highlight best and worst parameter values.
+    # Higher fitness = robot reached and stayed near the light = better performance.
+    best_idx = np.argmax(scores)
+    worst_idx = np.argmin(scores)
+    plt.scatter([param_values[best_idx]], [scores[best_idx]],
+                color='green', s=150, zorder=5, label=f'Best: {param_values[best_idx]:.3f}')
+    plt.scatter([param_values[worst_idx]], [scores[worst_idx]],
+                color='red', s=150, zorder=5, label=f'Worst: {param_values[worst_idx]:.3f}')
     plt.legend()
 
     # Save or show plot

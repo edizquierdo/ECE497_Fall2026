@@ -9,7 +9,7 @@ and visualizes the final fitness as a function of that parameter.
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
-from evolve import run_evolution, resolve_device
+from evolve import run_evolution, resolve_device, FITNESS_FUNCTIONS_CHOICES
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -92,7 +92,7 @@ def parse_args():
         "--fitness",
         type=str,
         default="count_ones",
-        choices=["count_ones", "step", "rastrigin", "sparse"],
+        choices=list(FITNESS_FUNCTIONS_CHOICES),
         help="Fitness function to optimize (default: count_ones)"
     )
     parser.add_argument(

@@ -18,9 +18,9 @@ By completing this project, you will learn how to:
 - Experiment with different controller parameters.
 - Perform systematic parameter studies.
 - Modify a robotic controller and evaluate the consequences of those changes.
-- Visualize data, generate insights, and archive results.
-- Generate hypotheses and tests their validity through experiments. 
 
+- Visualize data, interpret results, generate insights and new experiments, and archive results.
+- Generate hypotheses and tests their validity through experiments. 
 ---
 
 ## Background

@@ -19,6 +19,11 @@ By completing this project, you will learn how to:
 - Perform systematic parameter studies.
 - Interpret fitness trajectories over generations.
 
+More generally, you will also continue to train your abilities to: 
+- Visualize data, interpret results, generate insights and new experiments, and archive results.
+- Generate hypotheses and tests their validity through experiments. 
+
+
 ---
 
 ## Background
@@ -106,6 +111,8 @@ If you'd rather use `conda`, that's fine too — just create an environment with
 
 ## Running the Evolutionary Algorithm
 
+We will be using an existing Evolutionary Algorithm library that is popular, freely available and open-source: [EvoTorch](https://evotorch.ai). You are encouraged to visit their website for documentation, examples, and tutorials. 
+
 To run the default evolutionary simulation,
 
 ```bash
@@ -123,9 +130,9 @@ Useful command-line options include:
 | `--minbound` | Minimum gene value (also the initial sampling range's lower bound) | `0.0` |
 | `--maxbound` | Maximum gene value (also the initial sampling range's upper bound) | `1.0` |
 | `--mut_stdev` | Standard deviation for Gaussian mutation | `0.1` |
-| `--tournament_size` | Tournament size for SBX crossover (GA only) | `3` |
-| `--eta` | Distribution index for SBX crossover (GA only) | `20` |
-| `--no-crossover` | Disable SBX crossover, running a mutation-only GA (GA only) | crossover on |
+| `--tournament_size` | Tournament size for Simulated Binary Crossover (SBX) (GA only) | `3` |
+| `--eta` | Distribution index for Simulated Binary Crossover (GA only) | `20` |
+| `--no-crossover` | Disable Simulated Binary Crossover, running a mutation-only GA (GA only) | crossover on |
 | `--no-elitism` | Disable elitism (elitism is enabled by default) | elitism on |
 | `--vizperf` | Visualize fitness over generations | off |
 | `--verbose` | Print progress to console | off |
@@ -227,7 +234,7 @@ The evolutionary algorithm in `evolve.py` implements:
 
 - A population of individuals, each with a genome of **real-valued genes** (initialized uniformly in [0, 1])
 - A fitness function that counts genes with values > 0.5 as "ON"
-- SBX crossover (GA only, on by default — disable with `--no-crossover`) and Gaussian mutation to introduce variation
+- A form of recombination called: Simulated Binary Crossover (SBX) (GA only, on by default — disable with `--no-crossover`) and Gaussian mutation to introduce variation
 - Elitism to preserve the best solution across generations
 
 **Important note:** Genes are continuous during evolution; the 0.5 threshold is only applied when computing fitness and producing the final genotype output.
@@ -254,6 +261,8 @@ By monitoring these metrics over time, you can observe how the population conver
 ## Assignment
 
 ### Part 1 – Understand the Fitness Function
+
+For the first parts of this project, we will work on the simplest possible problem: Maximizing Ones. The idea is that there's a genome of length N, each one at random initially, and we want to mutate and recombine solutions in the population until we find a genome with all 1s. This is obviously trivial -- not a problem that requires optimization. But it's a good way to debug and learn to use evolutionary algorithms. In Part 3, you will test it out on different problems. In the next prorgramming project, you will apply it to neural networks, and then later on to robot bodies and their controllers! 
 
 Analyze the `count_ones` function in `evolve.py`:
 
@@ -283,9 +292,10 @@ Questions to consider include:
 - What happens when the population is too small?
 - Can a very high mutation rate prevent convergence?
 - Is there an optimal mutation rate? Why or why not?
+- When you see an evolutionary run, what is a sign that your mutation rate is too high or too low? 
+- In your own words, explain the difference between the GA and the ES. 
 - How does GA compare to ES in terms of speed and quality?
-- Does disabling crossover change convergence speed, final fitness, or both? For a genome this
-  small, is crossover doing much work at all?
+- Does disabling crossover change convergence speed, final fitness, or both? Does this change with the size of the genome? 
 
 **Note on comparing GA and ES:** look closely at how `run_evolution` constructs the `Problem` for each algorithm. GA keeps `bounds=(minbound, maxbound)` enforced every generation, but ES's `bounds` is set to `None` — genes are only constrained to `[minbound, maxbound]` at generation-0 initialization, and nothing stops ES's search distribution from drifting outside that range afterward. Keep this in mind when interpreting a GA-vs-ES comparison: a difference in final fitness might reflect this asymmetry rather than (or in addition to) a genuine difference in search quality between the two algorithms.
 
@@ -295,13 +305,13 @@ Questions to consider include:
 
 Maximizing ones is a relatively trivial problem. Implement one or more alternative fitness functions:
 
-- **Step function**: Reward specific patterns (e.g., alternating ON/OFF genes)
-- **Rastrigin-like**: Create a rugged landscape with many local optima
 - **Sparse reward**: Only reward individuals with > X% of genes ON
+- **Step function**: Reward specific 0/1 patterns (e.g., alternating ON/OFF genes)
+- **Rastrigin-like**: Create a rugged landscape with many local optima
 
-`evolve.py` already has the plumbing to select a fitness function at the command line (`--fitness {count_ones,step,rastrigin,sparse}`, plus `--sparse_threshold` for the sparse case — see the CLI options table above) and a `count_ones` implementation to use as a reference. What's missing is the actual logic: `step_pattern`, `rastrigin_like`, and `sparse_reward` in `evolve.py` are stubs (marked `TODO (Part 3)`, each currently raising `NotImplementedError`) — your job is to fill in their bodies. You don't need to implement all three; pick at least one to evaluate below.
+`evolve.py` already has the plumbing to select a fitness function at the command line (`--fitness {count_ones,step,rastrigin,sparse}`, plus `--sparse_threshold` for the sparse case — see the CLI options table above) and a `count_ones` implementation to use as a reference. What's missing is the actual logic: `step_pattern`, `rastrigin_like`, and `sparse_reward` in `evolve.py` are stubs (marked `TODO (Part 3)`, each currently raising `NotImplementedError`) — your job is to fill in their bodies. You don't need to implement all three (although you can). Pick at least one to evaluate below.
 
-Evaluate how these changes affect evolutionary dynamics.
+Evaluate how these changes affect evolutionary dynamics. In other words, note how the results from the analysis that you did for Part 2 changes when you change to a slightly harder problem. 
 
 ---
 
@@ -322,31 +332,35 @@ Support your conclusions using appropriate plots and statistics.
 
 ## Optional / Advanced Challenge
 
-Parts 1–4 are required. Beyond that, pick **one** of the following three directions to investigate further. Each is open-ended — there's no single right answer, and the point is to form a hypothesis, run the experiment, and report what you found. Only attempt one; go as deep as you like on it.
+Parts 1–4 are required; these are optional. If you would like, pick **one** of the following three directions to investigate further. Each is open-ended — there's no single right answer, and the point is to form a hypothesis, run the experiment, and report what you found. Go as deep as you like on it.
 
-**1. Write a simple evolutionary algorithm from scratch.** Instead of relying on EvoTorch's built-in `GeneticAlgorithm`, implement your own minimal EA loop directly in plain Python/NumPy — no EvoTorch algorithm classes involved (you can still use an EvoTorch `Problem` for fitness evaluation if you find it convenient, or skip EvoTorch entirely). A good target is a **Microbial GA**: repeatedly pick two random individuals, have the loser copy (part of) the winner's genome with mutation, and put both back in the population — no explicit generations, no separate offspring population, just pairwise "infections" over time. Hypothesis: how does its behavior (convergence speed, final fitness, sensitivity to population size) compare to the `GeneticAlgorithm`-based results from Part 2?
+**1. Solve a more real-world problem.** All the problems we have tested so far are relatively trivial. But finding the right parameters and configurations in problems occurs in all sorts of walk of life. For this option, try a harder problem. For example, you could try to solve the [Traveling Salesman Problem](https://en.wikipedia.org/wiki/Travelling_salesman_problem) or the [Knapsack Problem](https://en.wikipedia.org/wiki/Knapsack_problem) or the [Job Shop Scheduling Problem](https://en.wikipedia.org/wiki/Job-shop_scheduling).
 
-**2. Try an existing algorithm from EvoTorch you haven't used yet.** `evolve.py` only uses `GeneticAlgorithm` and `SNES`, but EvoTorch's `evotorch.algorithms` module ships several others, including `CEM` (Cross-Entropy Method), `CMAES`/`PyCMAES` (Covariance Matrix Adaptation ES), `Cosyne` (Cooperative Synapse Neuroevolution), `MAPElites` (a quality-diversity algorithm — note this one optimizes for a diverse archive of solutions rather than a single best one, so it needs a bit more setup), `PGPE` (Policy Gradients with Parameter-based Exploration), and `SteadyStateGA`. Swap one in for GA/ES in a copy of `run_evolution` and run it on the same `count_ones` task (and, if you like, your Part 3 fitness function too). Hypothesis: how does it compare to GA and ES on speed, final fitness, and sensitivity to its own hyperparameters? Check that algorithm's EvoTorch documentation for what those hyperparameters are and what they control.
+**2. Write a simple evolutionary algorithm from scratch.** Instead of relying on EvoTorch's built-in `GeneticAlgorithm`, implement your own minimal EA loop directly in plain Python/NumPy — no EvoTorch algorithm classes involved (you can still use an EvoTorch `Problem` for fitness evaluation if you find it convenient, or skip EvoTorch entirely). A good target is a **Microbial GA**: repeatedly pick two random individuals, have the loser copy (part of) the winner's genome with mutation, and put both back in the population — no explicit generations, no separate offspring population, just pairwise "infections" over time. Hypothesis: how does its behavior (convergence speed, final fitness, sensitivity to population size) compare to the `GeneticAlgorithm`-based results from Part 2?
 
-**3. Explore an optimization paradigm beyond evolutionary algorithms.** EAs are one family within a broader landscape of derivative-free optimization methods. Pick one adjacent paradigm — for example **particle swarm optimization** (individuals are "particles" with velocity, pulled toward their own best-known position and the swarm's best-known position, rather than selected/mutated) or **multi-objective optimization** (optimizing for more than one fitness criterion at once, where there's no single "best" individual but a Pareto front of trade-offs) — and produce a short comparative write-up: how does its core mechanism differ from the GA/ES approach in this project, what kinds of problems is it particularly well- or poorly-suited for, and (if you have time to implement a small example, even a toy one) how does it perform on `count_ones` or your Part 3 fitness function? This option can be primarily a research/comparison exercise rather than a full implementation if your chosen paradigm doesn't have a convenient existing library to build on.
+**3. Try an existing algorithm from EvoTorch you haven't used yet.** `evolve.py` only uses `GeneticAlgorithm` and `SNES`, but EvoTorch's `evotorch.algorithms` module ships several others, including `CEM` (Cross-Entropy Method), `CMAES`/`PyCMAES` (Covariance Matrix Adaptation ES), `Cosyne` (Cooperative Synapse Neuroevolution), `MAPElites` (a quality-diversity algorithm — note this one optimizes for a diverse archive of solutions rather than a single best one, so it needs a bit more setup), `PGPE` (Policy Gradients with Parameter-based Exploration), and `SteadyStateGA`. Swap one in for GA/ES in a copy of `run_evolution` and run it on the same `count_ones` task (and, if you like, your Part 3 fitness function too). Hypothesis: how does it compare to GA and ES on speed, final fitness, and sensitivity to its own hyperparameters? Check that algorithm's EvoTorch documentation for what those hyperparameters are and what they control.
 
-You're encouraged to explore your own idea beyond these three as well, as long as it's a genuine extension (not just a parameter change already covered in Parts 2–4).
+**4. Explore an optimization paradigm beyond evolutionary algorithms.** EAs are one family within a broader landscape of derivative-free optimization methods. Pick one adjacent paradigm — for example **particle swarm optimization** (individuals are "particles" with velocity, pulled toward their own best-known position and the swarm's best-known position, rather than selected/mutated) or **multi-objective optimization** (optimizing for more than one fitness criterion at once, where there's no single "best" individual but a Pareto front of trade-offs) — and produce a short comparative write-up: how does its core mechanism differ from the GA/ES approach in this project, what kinds of problems is it particularly well- or poorly-suited for, and (if you have time to implement a small example, even a toy one) how does it perform on `count_ones` or your Part 3 fitness function? This option can be primarily a research/comparison exercise rather than a full implementation if your chosen paradigm doesn't have a convenient existing library to build on.
+
+You're encouraged to explore your own idea beyond these as well, as long as it's a genuine extension.
 
 ---
 
 ## What to Submit to Moodle
 
-Submit a single **written report as a PDF** to Moodle.
+Submit the code zipped (`p2_lastname.zip`) and the written report as a PDF (`p2_lastname.pdf`) to Moodle. 
+
+The code should include everything you used and generated for this project (including code, scripts, data, figures). The code does not need to be perfectly organized. Simply compress your working folder as it is. 
+
+The report should include:
 
 ### Title Page
-
-The first page of your report should include:
 
 - Your name
 - Course title (ECE497: Evolutionary Robotics)
 - Assignment name (Project 2: Evolutionary Algorithms)
 - Date submitted
-- Amount of time spent on this project
+- Amount of time spent on this project 
 - A self-assessment of your confidence in your understanding of the concepts, the code, and the insights gained from this project (a number between 1 and 10)
 
 ### Report Body
@@ -400,13 +414,6 @@ Each part of the assignment (see *Assignment* above) is weighted roughly equally
 - **Creativity & critical thinking (2 pts)** — depth of insight, quality of open-ended reasoning, and evidence of genuine exploration beyond the minimum required to answer each question — especially in connecting the parameter intuitions from Part 2 to how they hold up (or don't) on the harder fitness landscapes in Part 3.
 
 ---
-
-## Further Reading
-
-- Fogel, D. B. (2006). *Evolutionary Computation: The Fuzzy Theory of Evolution.*
-- Mitchell, M. (1998). *An Introduction to Genetic Algorithms.*
-- Beyer, H. G., & Schwefel, H. P. (2002). *Evolution Strategies: A Comprehensive Introduction.*
-
 ---
 
 This project was developed by Eduardo Izquierdo for **ECE497 (Fall 2026): Evolutionary Robotics** at Rose-Hulman Institute of Technology.

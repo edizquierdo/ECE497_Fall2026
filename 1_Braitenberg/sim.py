@@ -37,7 +37,7 @@ def parse_args():
                              "effect once you implement Vehicle.think()'s OPTIONAL runtime switch.")
     parser.add_argument("--viztraces", action='store_true', help="Enable visualization of individual traces")
     parser.add_argument("--vizdist", action='store_true', help="Enable visualization of average distance")
-    parser.add_argument("--scores", action='store_true', help="Print avg distance per repetition")
+    parser.add_argument("--scores", action='store_true', help="Print the fitness score (not yet implemented)")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     parser.add_argument("--save", type=str, default=None,
                         help="Directory to save --viztraces/--vizdist figures to as PNGs, "

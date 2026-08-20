@@ -187,7 +187,8 @@ def main():
     plt.grid(True, alpha=0.3)
 
     # Highlight best and worst parameter values
-    # Lower score = robot stays closer to light = better performance
+    # Lower score = robot stays closer to light = better performance 
+    # Note: if your fitness is such that higher score means better performance, then you can change this around.
     min_idx = np.argmin(scores)
     max_idx = np.argmax(scores)
     plt.scatter([param_values[min_idx]], [scores[min_idx]],

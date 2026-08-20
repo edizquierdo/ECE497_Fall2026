@@ -18,6 +18,8 @@ By completing this project, you will learn how to:
 - Experiment with different controller parameters.
 - Perform systematic parameter studies.
 - Modify a robotic controller and evaluate the consequences of those changes.
+- Visualize data, generate insights, and archive results.
+- Generate hypotheses and tests their validity through experiments. 
 
 ---
 
@@ -46,7 +48,7 @@ One of the cleverest aspects of Braitenberg's original design is *how* the senso
 | **Ipsilateral (direct)** | Fear | Liking |
 | **Contralateral (crossed)** | Aggression | Love |
 
-These four behaviors are Braitenberg's names for what are, biologically, simple positive and negative taxes (approach and avoidance responses) found throughout the animal kingdom. You've already read the relevant chapters in *Vehicles*, so use this as a refresher rather than new material: revisit Braitenberg's discussion of Vehicles 2 and 3 for the full reasoning behind why each combination produces the behavior it's named for.
+These four behaviors are Braitenberg's names for what are, biologically, simple positive and negative taxes (approach and avoidance responses) found throughout the animal kingdom. In parallel, you have been asked to read the relevant chapters in *Vehicles*, so use this as complementary material.
 
 The simulator supports the two excitatory wiring schemes:
 
@@ -269,11 +271,9 @@ There are many components to this simulation. Of particular importance are the m
 > begins at the origin facing directly toward the light. The only thing that varies between
 > repetitions is the random noise. Keep that in mind as you experiment with `noise` in particular.
 
-Experiment by varying each one of these parameters and observe the changes in the traces (`--viztraces`) and the distances (`--vizdist`).
+Experiment by varying **each one** of these six parameters: `duration`, `reps`, `distance`, `noise`,  `turn_gain`, and `angle_offset`. Observe the changes in the traces (`--viztraces`) and the distances (`--vizdist`). Reproduce figures in your report and explain your observations and insights about each of the components. 
 
-Reproduce figures in your report and explain your observations and insights about each of the components.
-
-Then **pick one parameter** — `turn_gain`, `noise`, or `angle_offset` — that you found particularly interesting, and explore it more closely. Form a hypothesis, purely from watching the traces and distance plots, about how that parameter affects the robot's ability to reach the light (e.g. "performance should get worse past a certain noise level" or "there should be a best turning gain, with worse performance on either side"). You will check this hypothesis in Part 3.
+Next, **pick one parameter** that you found of either `noise`,  `turn_gain`, or `angle_offset` that you found particularly interesting, and explore it more closely. Form a hypothesis, purely from watching the traces and distance plots, about how that parameter affects the robot's ability to reach the light (e.g. "performance should get worse past a certain noise level" or "there should be a best turning gain, with worse performance on either side"). You will check this hypothesis in Part 3.
 
 Keep in mind that the fitness scores (`--scores`) will just produce a value of 0 for now, because you will be implementing that next.
 
@@ -301,13 +301,17 @@ Think carefully about what aspect of behavior your fitness function rewards. Pos
 
 Write up a precise description of your fitness function. This should include a description of your evaluation: how many times is the agent ran, for how long, from what kind of starting positions, what is being measured, how is that measure being averaged to produced a single index. The fitness function can include a descriptive explanation and it can also include some formulas.
 
+Note: Your fitness score calculation could be such that a higher score means better performance or the other way around a score of 0 means a perfect performance and a higher score means worst performance. That's up to you. However, keep in mind that `study.py` currently assumest that your fitness will be such that lower score is better and higher score is worst. You can change that around. 
+
 Once your fitness function is in place, use `study.py` to sweep the **same parameter you chose in Part 2**, for example:
 
 ```bash
 python study.py --param noise
 ```
 
-Compare the resulting plot to the hypothesis you wrote down in Part 2. Did the quantitative results match your qualitative expectations? If not, discuss why — it's common (and interesting!) for a hypothesis formed from watching a handful of traces to miss something a full sweep reveals.
+Before you set out to use the study.py program, provide a description of what parameters it can receive, what they stand for, what their defaults are, and what all you think you will be able to do with it. For example, can you change the number of `reps` and what exactly does that change in the code. Compare two studies, one with reps set to 1 and one with reps set to 100. What effect does reps have on the study of the parameters? 
+
+Finally, compare the resulting plot to the hypothesis you wrote down in Part 2. Did the quantitative results match your qualitative expectations? If not, discuss why — it's common (and interesting!) for a hypothesis formed from watching a handful of traces to miss something a full sweep reveals.
 
 ---
 
@@ -321,16 +325,18 @@ Questions to consider include:
 
 - What happens when the turning gain is very small?
 - What happens when it is very large?
+- What happens when noise is set to 0 and why does that happen? 
 - Can noise ever improve performance?
 - Is there a sweet spot for noise, if so what is it? And why? 
 - Does the placement of the sensors (angle offset) affect the performance? If so, what is the best angle offset?
 - Which parameter has the greatest influence on behavior?
+- Is there one combination of all three parameters the makes the agent most optimal? 
 
 ---
 
 ## Optional / Advanced Challenge
 
-Parts 1–4 are required. Beyond that, pick **one** of the following four directions to investigate further. Each is open-ended — there's no single right answer, and the point is to form a hypothesis, run the experiment, and report what you found. Only attempt one; go as deep as you like on it.
+Parts 1–4 are required; these are optional. If you would like, pick **one** of the following four directions to investigate further. Each is open-ended — there's no single right answer, and the point is to form a hypothesis, run the experiment, and report what you found. Go as deep as you like on it.
 
 **1. Multiple light sources.** Add a second `Light` instance and modify `Vehicle.sense()` to combine readings from both (e.g., sum the inverse-distance intensities from each, or take the max). Before running anything, predict: will the vehicle settle at a point between the two lights, orbit between them, or commit to the nearer one? Then test it under a few different placements — lights close together vs. far apart, and symmetric vs. off-to-one-side — and see whether your prediction held.
 
@@ -346,7 +352,11 @@ You're encouraged to explore your own idea beyond these four as well, as long as
 
 ## What to Submit to Moodle
 
-Submit a single **written report as a PDF** to Moodle. The report should include:
+Submit the code zipped (`p1_lastname.zip`) and the written report as a PDF (`p1_lastname.pdf`) to Moodle. 
+
+The code should include everything you used and generated for this project (including code, scripts, data, figures). The code does not need to be perfectly organized. Simply compress your working folder as it is. 
+
+The report should include:
 
 ### Title Page
 
@@ -390,13 +400,6 @@ Each part of the assignment (see *Assignment* above) is weighted roughly equally
 - **Creativity & critical thinking (2 pts)** — depth of insight, quality of open-ended reasoning, and evidence of genuine exploration beyond the minimum required to answer each question — especially in whether your Part 3 results genuinely confirmed or overturned the hypothesis you formed in Part 2, not just whether the plots looked similar.
 
 ---
-
-## Further Reading
-
-- Braitenberg, V. (1984). *Vehicles: Experiments in Synthetic Psychology.*
-- Pfeifer, R., & Bongard, J. *How the Body Shapes the Way We Think.*
-- Brooks, R. A. (1991). *Intelligence Without Representation.*
-
 ---
 
 This project was developed by Eduardo Izquierdo for **ECE497 (Fall 2026): Evolutionary Robotics** at Rose-Hulman Institute of Technology.

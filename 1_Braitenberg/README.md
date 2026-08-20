@@ -154,7 +154,7 @@ Useful command-line options include:
 | `--wiring` | Sensor-to-motor wiring scheme (`crossed` or `direct`) — only takes effect once you implement the OPTIONAL runtime switch in `think()` | `crossed` |
 | `--seed` | Random seed for reproducibility | None (random each run) |
 | `--viztraces` | Display robot trajectories | off |
-| `--vizdist` | Plot distance from the light over time | off |
+| `--vizdist` | Plot average distance from the light over time | off |
 | `--scores` | Print fitness scores | off |
 | `--save DIR` | Save `--viztraces`/`--vizdist` figures to `DIR` as PNGs instead of opening an interactive window (handy when generating many figures) | off (shows interactively) |
 
@@ -272,6 +272,8 @@ There are many components to this simulation. Of particular importance are the m
 > repetitions is the random noise. Keep that in mind as you experiment with `noise` in particular.
 
 Experiment by varying **each one** of these six parameters: `duration`, `reps`, `distance`, `noise`,  `turn_gain`, and `angle_offset`. Observe the changes in the traces (`--viztraces`) and the distances (`--vizdist`). Reproduce figures in your report and explain your observations and insights about each of the components. 
+
+Note that when your visualizing the distance (`--vizdist`), you are visualizing an average across N runs (`--reps`). Add one line to the code in the sim.py that allows you to see not just the average, but also the standard deviation across the different repetitions. This kind of detail is important for comparisons later on. You should also be able to save the average and standard deviation into a file, and then write a script that visualizes two different configurations in the same figure, as a way to compare them head to head. You can even add a line of code so that when `--save` is called, in addition to the figures, the averages and standard deviation is also saved it to a file. This will be useful for you to then import and visualize. 
 
 Next, **pick one parameter** that you found of either `noise`,  `turn_gain`, or `angle_offset` that you found particularly interesting, and explore it more closely. Form a hypothesis, purely from watching the traces and distance plots, about how that parameter affects the robot's ability to reach the light (e.g. "performance should get worse past a certain noise level" or "there should be a best turning gain, with worse performance on either side"). You will check this hypothesis in Part 3.
 

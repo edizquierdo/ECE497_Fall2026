@@ -37,6 +37,11 @@ def parse_args():
                              "effect once you implement Vehicle.think()'s OPTIONAL runtime switch.")
     parser.add_argument("--viztraces", action='store_true', help="Enable visualization of individual traces")
     parser.add_argument("--vizdist", action='store_true', help="Enable visualization of average distance")
+    parser.add_argument("--render", action='store_true',
+                        help="Save (with --save) or show an animated GIF of the vehicle "
+                             "trajectories, instead of the static --viztraces plot. Most "
+                             "interesting with a larger --reps (e.g. --reps 50) to watch "
+                             "many vehicles converge on the light together.")
     parser.add_argument("--scores", action='store_true', help="Print the fitness score (not yet implemented)")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     parser.add_argument("--save", type=str, default=None,
@@ -46,9 +51,64 @@ def parse_args():
     return parser.parse_args()
 
 
+def animate_traces(xpos, ypos, light, duration, reps, save=None, trail=60):
+    """Animate the recorded trajectories (the same xpos/ypos --viztraces
+    collects) as vehicles moving toward the light, instead of one static
+    plot. Most interesting with a larger --reps (e.g. 50) so you can watch
+    many vehicles converge together.
+
+    Shows a short fading trail per vehicle (the last `trail` steps) rather
+    than full history, and draws all repetitions in a single scatter() call
+    per frame rather than one call per vehicle, so rendering stays fast
+    regardless of --duration or --reps.
+    """
+    import matplotlib.animation as animation
+
+    stride = max(1, duration // 200)
+    frame_steps = list(range(0, duration, stride))
+
+    margin = 1.0
+    xmin = min(0.0, xpos.min(), light.x_pos) - margin
+    xmax = max(0.0, xpos.max(), light.x_pos) + margin
+    ymin = min(0.0, ypos.min(), light.y_pos) - margin
+    ymax = max(0.0, ypos.max(), light.y_pos) + margin
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    def update(frame_i):
+        ax.clear()
+        ax.set_xlim(xmin, xmax)
+        ax.set_ylim(ymin, ymax)
+        ax.set_aspect('equal')
+        t = frame_steps[frame_i]
+        lo = max(0, t - trail)
+        n = t + 1 - lo
+        if n > 1:
+            trail_x = xpos[:, lo:t + 1].ravel()
+            trail_y = ypos[:, lo:t + 1].ravel()
+            alphas = np.tile(np.linspace(0.05, 0.8, n), reps)
+            ax.scatter(trail_x, trail_y, s=4, c="tab:blue", alpha=alphas)
+        ax.scatter(xpos[:, t], ypos[:, t], s=20, c="tab:blue", zorder=3)
+        ax.plot(0.0, 0.0, "y^", markersize=10, label="Start")
+        ax.plot(light.x_pos, light.y_pos, "ko", markersize=10, label="Light")
+        ax.set_xlabel("X position")
+        ax.set_ylabel("Y position")
+        ax.set_title(f"Vehicle Trajectories -- step {t}/{duration}")
+        ax.legend(loc="upper right")
+        return ()
+
+    anim = animation.FuncAnimation(fig, update, frames=len(frame_steps), interval=40)
+    if save is not None:
+        os.makedirs(save, exist_ok=True)
+        anim.save(os.path.join(save, "traces.gif"), writer=animation.PillowWriter(fps=25))
+        plt.close(fig)
+    else:
+        plt.show()
+
+
 def run_simulation(duration=5000, reps=10, distance=10, angle_offset=np.pi/2,
                    turn_gain=0.1, noise=0.1, wiring="crossed",
-                   viztraces=False, vizdist=False, seed=None, save=None):
+                   viztraces=False, vizdist=False, render=False, seed=None, save=None):
     """Run the Braitenberg vehicle simulation.
 
     Args:
@@ -63,6 +123,8 @@ def run_simulation(duration=5000, reps=10, distance=10, angle_offset=np.pi/2,
                 runtime switch -- otherwise Vehicle.think() ignores it.
         viztraces: Enable trajectory visualization
         vizdist: Enable distance-to-light over time visualization
+        render: Save/show an animated GIF of the trajectories instead of the
+                static --viztraces plot (see animate_traces())
         seed: Random seed for reproducibility
         save: If given, a directory to save --viztraces/--vizdist figures
               to as PNGs instead of opening an interactive window. Handy
@@ -77,8 +139,9 @@ def run_simulation(duration=5000, reps=10, distance=10, angle_offset=np.pi/2,
         np.random.seed(seed)
 
     # Variables to store data
-    xpos = np.zeros((reps, duration)) if viztraces else None
-    ypos = np.zeros((reps, duration)) if viztraces else None
+    need_positions = viztraces or render
+    xpos = np.zeros((reps, duration)) if need_positions else None
+    ypos = np.zeros((reps, duration)) if need_positions else None
     dist = np.zeros((reps, duration))
 
     # Initialize light source
@@ -94,7 +157,7 @@ def run_simulation(duration=5000, reps=10, distance=10, angle_offset=np.pi/2,
             agent.think()
             agent.move()
 
-            if viztraces:
+            if need_positions:
                 xpos[r, t] = agent.x_pos
                 ypos[r, t] = agent.y_pos
 
@@ -138,6 +201,9 @@ def run_simulation(duration=5000, reps=10, distance=10, angle_offset=np.pi/2,
         else:
             plt.show()
 
+    if render:
+        animate_traces(xpos, ypos, light, duration, reps, save)
+
     if vizdist:
         avg_fitness_over_time = np.mean(dist, axis=0)
         plt.figure(figsize=(10, 6))
@@ -169,6 +235,7 @@ def main():
         wiring=args.wiring,
         viztraces=args.viztraces,
         vizdist=args.vizdist,
+        render=args.render,
         seed=args.seed,
         save=args.save
     )

@@ -155,6 +155,7 @@ Useful command-line options include:
 | `--seed` | Random seed for reproducibility | None (random each run) |
 | `--viztraces` | Display robot trajectories | off |
 | `--vizdist` | Plot average distance from the light over time | off |
+| `--render` | Save/show an animated GIF of the trajectories (from the same data as `--viztraces`) instead of a static plot — most interesting with a larger `--reps` (e.g. 50) to watch many vehicles converge together | off |
 | `--scores` | Print fitness scores | off |
 | `--save DIR` | Save `--viztraces`/`--vizdist` figures to `DIR` as PNGs instead of opening an interactive window (handy when generating many figures) | off (shows interactively) |
 
@@ -264,6 +265,7 @@ There are many components to this simulation. Of particular importance are the m
 | `--seed` | Random seed for reproducibility | None (random each run) |
 | `--viztraces` | Display robot trajectories | off |
 | `--vizdist` | Plot distance from the light over time | off |
+| `--render` | Save/show an animated GIF of the trajectories (from the same data as `--viztraces`) instead of a static plot — most interesting with a larger `--reps` (e.g. 50) to watch many vehicles converge together | off |
 | `--scores` | Print fitness scores | off |
 | `--save DIR` | Save `--viztraces`/`--vizdist` figures to `DIR` as PNGs instead of opening an interactive window (handy when generating many figures) | off (shows interactively) |
 
@@ -350,7 +352,9 @@ Parts 1–4 are required; these are optional. If you would like, pick **one** of
 
 **5. Combine attraction and avoidance.** Add a second stimulus the vehicle should avoid (e.g., a second `Light`-like object wired with inhibitory-crossed connections instead of excitatory-crossed), and give the vehicle a controller that combines both influences — attraction to the real light, repulsion from the "obstacle." Does a simple linear combination of the two wiring schemes produce sensible trade-off behavior (e.g., approach the light while keeping distance from the obstacle), or does it need something more than direct summation to avoid the two signals canceling out?
 
-You're encouraged to explore your own idea beyond these four as well, as long as it's a genuine extension of the simulator (not just a parameter change already covered in Parts 2–4).
+**6. Explore the two inhibitory wiring schemes.** Part 1 only asked you to implement the two *excitatory* schemes from the table in Background — Aggression (crossed) and Fear (direct). The table also lists two *inhibitory* schemes, Love (crossed) and Liking (direct), which you haven't built. Implement them: add `crossed_inhibitory` and `direct_inhibitory` branches to `think()`, where each inhibitory motor command is `1.0 - sensor` instead of the excitatory `sensor` (a strong, near-light sensor reading now *suppresses* its connected motor instead of driving it harder). Before running anything, predict how Love and Liking should behave relative to the two excitatory schemes you already know. Then run all four and compare. You may find the result surprising — it's not simply "the same topology, just gentler."
+
+You're encouraged to explore your own idea beyond these five as well, as long as it's a genuine extension of the simulator (not just a parameter change already covered in Parts 2–4).
 
 ---
 

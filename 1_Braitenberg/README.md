@@ -19,6 +19,8 @@ By completing this project, you will learn how to:
 - Perform systematic parameter studies.
 - Modify a robotic controller and evaluate the consequences of those changes.
 
+- Visualize data, interpret results, generate insights and new experiments, and archive results.
+- Generate hypotheses and tests their validity through experiments. 
 ---
 
 ## Background
@@ -46,7 +48,7 @@ One of the cleverest aspects of Braitenberg's original design is *how* the senso
 | **Ipsilateral (direct)** | Fear | Liking |
 | **Contralateral (crossed)** | Aggression | Love |
 
-These four behaviors are Braitenberg's names for what are, biologically, simple positive and negative taxes (approach and avoidance responses) found throughout the animal kingdom. You've already read the relevant chapters in *Vehicles*, so use this as a refresher rather than new material: revisit Braitenberg's discussion of Vehicles 2 and 3 for the full reasoning behind why each combination produces the behavior it's named for.
+These four behaviors are Braitenberg's names for what are, biologically, simple positive and negative taxes (approach and avoidance responses) found throughout the animal kingdom. In parallel, you have been asked to read the relevant chapters in *Vehicles*, so use this as complementary material.
 
 The simulator supports the two excitatory wiring schemes:
 
@@ -152,7 +154,8 @@ Useful command-line options include:
 | `--wiring` | Sensor-to-motor wiring scheme (`crossed` or `direct`) — only takes effect once you implement the OPTIONAL runtime switch in `think()` | `crossed` |
 | `--seed` | Random seed for reproducibility | None (random each run) |
 | `--viztraces` | Display robot trajectories | off |
-| `--vizdist` | Plot distance from the light over time | off |
+| `--vizdist` | Plot average distance from the light over time | off |
+| `--render` | Save/show an animated GIF of the trajectories (from the same data as `--viztraces`) instead of a static plot — most interesting with a larger `--reps` (e.g. 50) to watch many vehicles converge together | off |
 | `--scores` | Print fitness scores | off |
 | `--save DIR` | Save `--viztraces`/`--vizdist` figures to `DIR` as PNGs instead of opening an interactive window (handy when generating many figures) | off (shows interactively) |
 
@@ -262,6 +265,7 @@ There are many components to this simulation. Of particular importance are the m
 | `--seed` | Random seed for reproducibility | None (random each run) |
 | `--viztraces` | Display robot trajectories | off |
 | `--vizdist` | Plot distance from the light over time | off |
+| `--render` | Save/show an animated GIF of the trajectories (from the same data as `--viztraces`) instead of a static plot — most interesting with a larger `--reps` (e.g. 50) to watch many vehicles converge together | off |
 | `--scores` | Print fitness scores | off |
 | `--save DIR` | Save `--viztraces`/`--vizdist` figures to `DIR` as PNGs instead of opening an interactive window (handy when generating many figures) | off (shows interactively) |
 
@@ -269,11 +273,11 @@ There are many components to this simulation. Of particular importance are the m
 > begins at the origin facing directly toward the light. The only thing that varies between
 > repetitions is the random noise. Keep that in mind as you experiment with `noise` in particular.
 
-Experiment by varying each one of these parameters and observe the changes in the traces (`--viztraces`) and the distances (`--vizdist`).
+Experiment by varying **each one** of these six parameters: `duration`, `reps`, `distance`, `noise`,  `turn_gain`, and `angle_offset`. Observe the changes in the traces (`--viztraces`) and the distances (`--vizdist`). Reproduce figures in your report and explain your observations and insights about each of the components. 
 
-Reproduce figures in your report and explain your observations and insights about each of the components.
+Note that when your visualizing the distance (`--vizdist`), you are visualizing an average across N runs (`--reps`). Add one line to the code in the sim.py that allows you to see not just the average, but also the standard deviation across the different repetitions. This kind of detail is important for comparisons later on. You should also be able to save the average and standard deviation into a file, and then write a script that visualizes two different configurations in the same figure, as a way to compare them head to head. You can even add a line of code so that when `--save` is called, in addition to the figures, the averages and standard deviation is also saved it to a file. This will be useful for you to then import and visualize. 
 
-Then **pick one parameter** — `turn_gain`, `noise`, or `angle_offset` — that you found particularly interesting, and explore it more closely. Form a hypothesis, purely from watching the traces and distance plots, about how that parameter affects the robot's ability to reach the light (e.g. "performance should get worse past a certain noise level" or "there should be a best turning gain, with worse performance on either side"). You will check this hypothesis in Part 3.
+Next, **pick one parameter** that you found of either `noise`,  `turn_gain`, or `angle_offset` that you found particularly interesting, and explore it more closely. Form a hypothesis, purely from watching the traces and distance plots, about how that parameter affects the robot's ability to reach the light (e.g. "performance should get worse past a certain noise level" or "there should be a best turning gain, with worse performance on either side"). You will check this hypothesis in Part 3.
 
 Keep in mind that the fitness scores (`--scores`) will just produce a value of 0 for now, because you will be implementing that next.
 
@@ -301,13 +305,17 @@ Think carefully about what aspect of behavior your fitness function rewards. Pos
 
 Write up a precise description of your fitness function. This should include a description of your evaluation: how many times is the agent ran, for how long, from what kind of starting positions, what is being measured, how is that measure being averaged to produced a single index. The fitness function can include a descriptive explanation and it can also include some formulas.
 
+Note: Your fitness score calculation could be such that a higher score means better performance or the other way around a score of 0 means a perfect performance and a higher score means worst performance. Either works, but we recommend the former (higher score means better performance). More over, we highly recommend that you create a fitness that can be bounded, for example, between [0, 1]. That makes interpreting the fitness easier. Ultimately it is up to you. One way or another, keep in mind that `study.py` currently assumest that the higher score is better fitness. 
+
 Once your fitness function is in place, use `study.py` to sweep the **same parameter you chose in Part 2**, for example:
 
 ```bash
 python study.py --param noise
 ```
 
-Compare the resulting plot to the hypothesis you wrote down in Part 2. Did the quantitative results match your qualitative expectations? If not, discuss why — it's common (and interesting!) for a hypothesis formed from watching a handful of traces to miss something a full sweep reveals.
+Before you set out to use the study.py program, provide a description of what parameters it can receive, what they stand for, what their defaults are, and what all you think you will be able to do with it. For example, can you change the number of `reps` and what exactly does that change in the code. Compare two studies, one with reps set to 1 and one with reps set to 100. What effect does reps have on the study of the parameters? 
+
+Finally, compare the resulting plot to the hypothesis you wrote down in Part 2. Did the quantitative results match your qualitative expectations? If not, discuss why — it's common (and interesting!) for a hypothesis formed from watching a handful of traces to miss something a full sweep reveals.
 
 ---
 
@@ -321,32 +329,42 @@ Questions to consider include:
 
 - What happens when the turning gain is very small?
 - What happens when it is very large?
+- What happens when noise is set to 0 and why does that happen? 
 - Can noise ever improve performance?
 - Is there a sweet spot for noise, if so what is it? And why? 
 - Does the placement of the sensors (angle offset) affect the performance? If so, what is the best angle offset?
 - Which parameter has the greatest influence on behavior?
+- Is there one combination of all three parameters the makes the agent most optimal? 
 
 ---
 
 ## Optional / Advanced Challenge
 
-Parts 1–4 are required. Beyond that, pick **one** of the following four directions to investigate further. Each is open-ended — there's no single right answer, and the point is to form a hypothesis, run the experiment, and report what you found. Only attempt one; go as deep as you like on it.
+Parts 1–4 are required; these are optional. If you would like, pick **one** of the following directions to investigate further. Each is open-ended — there's no single right answer, and the point is to form a hypothesis, run the experiment, and report what you found. Go as deep as you like on it. The point is also to have a little bit of exploratory fun. Developing an idea here could lead to a potential lead for a final project. 
 
-**1. Multiple light sources.** Add a second `Light` instance and modify `Vehicle.sense()` to combine readings from both (e.g., sum the inverse-distance intensities from each, or take the max). Before running anything, predict: will the vehicle settle at a point between the two lights, orbit between them, or commit to the nearer one? Then test it under a few different placements — lights close together vs. far apart, and symmetric vs. off-to-one-side — and see whether your prediction held.
+**1. Multiple Braitenberg Vehicles.** You can extend the simulation script to have several vehicles in the same room. Perhaps one of them is `Love` or `Aggression` or any of the four possible wirings available. Let's say that there are two of them. And that instead of there being lights stationary in the environment, we attach lightbulbs to the vehicles. Now one of them is trying to catch the other one; while the other one could be trying to avoid the first one. Now, a more advanced version of this has N vehicles, not just two. An even more advanced version makes it so that if one catches another vehicle, it kills it, or converts it into one of their own. Finally, one thing that could help this environmnet is if the space is wrap-around. When an agent goes off to the side, it simply appears on the other side of the room. 
 
-**2. Sensor asymmetry and fault injection.** Give the two sensors different gains, or add sensor-specific noise (a new Gaussian noise term added directly to one sensor's reading in `sense()` — note that the existing `noise_stdev` only ever affects actuator/orientation noise in `move()`, so there's no existing per-sensor noise to "turn up" on one side; you're adding a new noise source, not scaling an existing one), and use `study.py`-style sweeps to find how much asymmetry the crossed-wiring controller can tolerate before it stops reliably reaching the light. Is the breakdown gradual (fitness degrades smoothly) or is there a sharp threshold?
+**2. Multiple light sources.** Add a second `Light` instance and modify `Vehicle.sense()` to combine readings from both (e.g., sum the inverse-distance intensities from each, or take the max). Before running anything, predict: will the vehicle settle at a point between the two lights, orbit between them, or commit to the nearer one? Then test it under a few different placements — lights close together vs. far apart, and symmetric vs. off-to-one-side — and see whether your prediction held.
 
-**3. Add inertia to the movement model.** `Vehicle.move()` currently sets orientation and velocity instantaneously from the current motor commands every step. Modify it so turning rate and speed change gradually toward their commanded values (e.g., exponential smoothing) instead of jumping there immediately. Hypothesis: does this more realistic inertia make trajectories smoother, or does it interact badly with `noise_stdev` — since noise is now effectively integrated over time rather than applied fresh each step?
+**3. Sensor asymmetry and fault injection.** Give the two sensors different gains, or add sensor-specific noise (a new Gaussian noise term added directly to one sensor's reading in `sense()` — note that the existing `noise_stdev` only ever affects actuator/orientation noise in `move()`, so there's no existing per-sensor noise to "turn up" on one side; you're adding a new noise source, not scaling an existing one), and use `study.py`-style sweeps to find how much asymmetry the crossed-wiring controller can tolerate before it stops reliably reaching the light. Is the breakdown gradual (fitness degrades smoothly) or is there a sharp threshold?
 
-**4. Combine attraction and avoidance.** Add a second stimulus the vehicle should avoid (e.g., a second `Light`-like object wired with inhibitory-crossed connections instead of excitatory-crossed), and give the vehicle a controller that combines both influences — attraction to the real light, repulsion from the "obstacle." Does a simple linear combination of the two wiring schemes produce sensible trade-off behavior (e.g., approach the light while keeping distance from the obstacle), or does it need something more than direct summation to avoid the two signals canceling out?
+**4. Add inertia to the movement model.** `Vehicle.move()` currently sets orientation and velocity instantaneously from the current motor commands every step. Modify it so turning rate and speed change gradually toward their commanded values (e.g., exponential smoothing) instead of jumping there immediately. Hypothesis: does this more realistic inertia make trajectories smoother, or does it interact badly with `noise_stdev` — since noise is now effectively integrated over time rather than applied fresh each step?
 
-You're encouraged to explore your own idea beyond these four as well, as long as it's a genuine extension of the simulator (not just a parameter change already covered in Parts 2–4).
+**5. Combine attraction and avoidance.** Add a second stimulus the vehicle should avoid (e.g., a second `Light`-like object wired with inhibitory-crossed connections instead of excitatory-crossed), and give the vehicle a controller that combines both influences — attraction to the real light, repulsion from the "obstacle." Does a simple linear combination of the two wiring schemes produce sensible trade-off behavior (e.g., approach the light while keeping distance from the obstacle), or does it need something more than direct summation to avoid the two signals canceling out?
+
+**6. Explore the two inhibitory wiring schemes.** Part 1 only asked you to implement the two *excitatory* schemes from the table in Background — Aggression (crossed) and Fear (direct). The table also lists two *inhibitory* schemes, Love (crossed) and Liking (direct), which you haven't built. Implement them: add `crossed_inhibitory` and `direct_inhibitory` branches to `think()`, where each inhibitory motor command is `1.0 - sensor` instead of the excitatory `sensor` (a strong, near-light sensor reading now *suppresses* its connected motor instead of driving it harder). Before running anything, predict how Love and Liking should behave relative to the two excitatory schemes you already know. Then run all four and compare. You may find the result surprising — it's not simply "the same topology, just gentler."
+
+You're encouraged to explore your own idea beyond these five as well, as long as it's a genuine extension of the simulator (not just a parameter change already covered in Parts 2–4).
 
 ---
 
 ## What to Submit to Moodle
 
-Submit a single **written report as a PDF** to Moodle. The report should include:
+Submit the code zipped (`p1_lastname.zip`) and the written report as a PDF (`p1_lastname.pdf`) to Moodle. 
+
+The code should include everything you used and generated for this project (including code, scripts, data, figures). The code does not need to be perfectly organized. Simply compress your working folder as it is. 
+
+The report should include:
 
 ### Title Page
 
@@ -390,13 +408,6 @@ Each part of the assignment (see *Assignment* above) is weighted roughly equally
 - **Creativity & critical thinking (2 pts)** — depth of insight, quality of open-ended reasoning, and evidence of genuine exploration beyond the minimum required to answer each question — especially in whether your Part 3 results genuinely confirmed or overturned the hypothesis you formed in Part 2, not just whether the plots looked similar.
 
 ---
-
-## Further Reading
-
-- Braitenberg, V. (1984). *Vehicles: Experiments in Synthetic Psychology.*
-- Pfeifer, R., & Bongard, J. *How the Body Shapes the Way We Think.*
-- Brooks, R. A. (1991). *Intelligence Without Representation.*
-
 ---
 
 This project was developed by Eduardo Izquierdo for **ECE497 (Fall 2026): Evolutionary Robotics** at Rose-Hulman Institute of Technology.

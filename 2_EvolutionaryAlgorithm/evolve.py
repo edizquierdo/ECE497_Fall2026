@@ -1,6 +1,5 @@
 import logging
 import argparse
-from functools import partial
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -84,26 +83,73 @@ def count_ones(x: torch.Tensor) -> torch.Tensor:
     """
     return ((x > 0.5).float().sum(dim=-1)) / x.shape[-1]  # Normalize by genome length
 
-def rastrigin_like(x: torch.Tensor) -> torch.Tensor:
+RASTRIGIN_A = 10.0
+RASTRIGIN_DOMAIN = 5.12  # standard Rastrigin domain: x_i in [-5.12, 5.12]
+
+
+def rastrigin(x: torch.Tensor) -> torch.Tensor:
     """Fitness function: a rugged, multimodal landscape based on the Rastrigin function.
 
-    TODO (Part 3): implement this fitness function. Consider rescaling genes
-    from [minbound, maxbound] into a wider domain before applying the
-    Rastrigin formula (otherwise the landscape may be too flat to be
-    interesting over the default [0, 1] gene range), and normalizing/negating
-    the result so it's compatible with Problem's objective_sense="max" and
-    comparable in scale to the other fitness functions here.
+    Provided as a worked example for Part 3 -- it shows one way to take a
+    standard optimization benchmark and turn it into a fitness function an
+    evolutionary algorithm can maximize.
+
+    The raw Rastrigin function
+
+        f(z) = A*n + sum_i [ z_i^2 - A * cos(2*pi*z_i) ]        (A = 10)
+
+    is a minimization problem: its global optimum is f = 0 at z = 0, ringed by
+    many regularly-spaced local minima (at integer z_i) that trap local search.
+    Two steps make it usable here:
+
+      1. Rescale genes from their evolved range [0, 1] onto the standard
+         Rastrigin domain [-5.12, 5.12], so gene value 0.5 maps to z = 0 (the
+         optimum) and the landscape shows its characteristic ripples over the
+         gene range (over a raw [0, 1] range the cosine term barely completes
+         one period and the landscape is nearly a smooth bowl).
+      2. Negate and squash: ``fitness = exp(-f / (A * n))`` -- a maximization
+         objective bounded to (0, 1], global optimum at fitness = 1.0, on the
+         same 0-to-1 scale as count_ones.
     """
-    raise NotImplementedError("Part 3: implement rastrigin_like")
+    n = x.shape[-1]
+    # [0, 1] gene value -> [-5.12, 5.12], with 0.5 -> 0 (the global optimum).
+    z = (x - 0.5) * (2.0 * RASTRIGIN_DOMAIN)
+    f = RASTRIGIN_A * n + (z ** 2 - RASTRIGIN_A * torch.cos(2.0 * np.pi * z)).sum(dim=-1)
+    return torch.exp(-f / (RASTRIGIN_A * n))
 
-FITNESS_FUNCTIONS_CHOICES = ("count_ones", "rastrigin")
 
-def _resolve_fitness_func(fitness: str, sparse_threshold: float):
-    """Look up a fitness function by name, binding extra params (e.g. sparse_threshold)."""
+def ackley(x: torch.Tensor) -> torch.Tensor:
+    """Fitness function: a landscape based on the Ackley function -- a large,
+    nearly-flat outer region with a single deep, narrow funnel at the optimum,
+    textured with many small ripples.
+
+    TODO (Part 3): implement this fitness function, following the same recipe
+    the provided `rastrigin` above uses:
+
+      1. Rescale genes from [0, 1] into a domain where the Ackley landscape is
+         interesting (its standard domain is [-32.768, 32.768]; a smaller one
+         such as [-5, 5] keeps more of the structure visible over the gene
+         range). Arrange it so gene value 0.5 maps to the optimum.
+      2. Ackley is a minimization problem with global optimum f = 0. Negate
+         (and normalize/squash) it so it works with Problem's
+         objective_sense="max" and is on a scale comparable to count_ones and
+         rastrigin.
+
+    See the README's Part 3 and https://en.wikipedia.org/wiki/Ackley_function
+    for the formula.
+    """
+    raise NotImplementedError("Part 3: implement ackley")
+
+FITNESS_FUNCTIONS_CHOICES = ("count_ones", "rastrigin", "ackley")
+
+def _resolve_fitness_func(fitness: str):
+    """Look up a fitness function by name."""
     if fitness == "count_ones":
         return count_ones
     elif fitness == "rastrigin":
         return rastrigin
+    elif fitness == "ackley":
+        return ackley
     else:
         raise ValueError(f"Unknown fitness function: {fitness}")
 
@@ -138,8 +184,9 @@ def run_evolution(popsize=10, gens=10, algo="GA", genesize=10,
             rest perturbed by `seed_noise`) instead of starting from scratch. Only
             supported when algo="GA" — raises ValueError if algo="ES".
         seed_noise: Stdev of the Gaussian perturbation applied to seed_genome_path copies.
-        fitness: Name of the fitness function to optimize -- one of "count_ones" or "rastrigin"
-          (see FITNESS_FUNCTIONS_CHOICES).
+        fitness: Name of the fitness function to optimize -- one of "count_ones",
+          "rastrigin", "ackley" (see FITNESS_FUNCTIONS_CHOICES). "count_ones" and
+          "rastrigin" are implemented; "ackley" is a Part 3 stub.
     """
 
     if seed is not None:
@@ -155,7 +202,7 @@ def run_evolution(popsize=10, gens=10, algo="GA", genesize=10,
     avg_fit = np.zeros(gens)
     worst_fit = np.zeros(gens)
 
-    objective_func = _resolve_fitness_func(fitness, sparse_threshold)
+    objective_func = _resolve_fitness_func(fitness)
 
     problem = Problem(
         objective_sense="max",       # we want to MAXIMISE fitness

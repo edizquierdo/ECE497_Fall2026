@@ -186,7 +186,6 @@ def main():
         "seed": args.seed,
         "verbose": False,  # Suppress per-generation output during study
         "fitness": args.fitness,
-        "sparse_threshold": args.sparse_threshold,
     }
 
     if args.verbose:

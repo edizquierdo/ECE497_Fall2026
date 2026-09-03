@@ -142,7 +142,7 @@ Useful command-line options include:
 | `--fitness_output FILE` | Save per-generation best/avg/worst fitness to this `.npz` file (keys `best`/`avg`/`worst`), so you can reload and compare fitness curves across configurations without re-running evolution | `None` |
 | `--seed_genome FILE` | Seed the initial population around a genome saved by a previous `--output` run (must match `--genesize`) instead of starting from scratch — one exact copy plus the rest perturbed by `--seed_noise`. Only supported with `--algorithm GA`, not `--algorithm ES` | `None` |
 | `--seed_noise` | Stdev of the Gaussian perturbation applied to `--seed_genome` copies | `0.05` |
-| `--fitness` | Fitness function to optimize: `count_ones` or `rastrigin`. Only `count_ones` is implemented out of the box — the other one is a stub you'll implement in Part 3 (see below) | `count_ones` |
+| `--fitness` | Fitness function to optimize: `count_ones`, `rastrigin`, or `ackley`. `count_ones` and `rastrigin` are implemented; `ackley` is a stub you'll implement in Part 3 (see below) | `count_ones` |
 
 For example,
 
@@ -301,30 +301,40 @@ Questions to consider include:
 
 ### Part 3 – Change the Fitness Function
 
-Maximizing ones is a relatively trivial problem. Implement the rastrigin function. 
+`count_ones` is deliberately trivial. Real optimization problems have **rugged, multimodal** fitness landscapes: many local optima that trap a search well short of the global one. In this part you move the evolutionary algorithm onto one such landscape.
 
-The Rastrigin function is a non-linear, multimodal test problem used to evaluate performance in mathematical optimization. It features a vast number of regularly distributed local minima that trap standard algorithms, making it a tough challenge for global search method. 
+#### A worked example: the Rastrigin function
 
-$$f(\mathbf{x}) = An + \sum_{i=1}^{n} \left[ x_i^2 - A \cos(2\pi x_i) \right]$$
+We have implemented `rastrigin` in `evolve.py` for you to read. It is a standard optimization benchmark — a quadratic bowl overlaid with a cosine ripple, so it has one global optimum surrounded by a regular lattice of local optima:
 
-where:
-- $A = 10$ is a constant.
-- $n$ is the number of dimensions.
-- $x_i \in [-5.12, 5.12]$ for $i = 1, 2, \dots, n$.
+$$f(\mathbf{z}) = A n + \sum_{i=1}^{n} \left[ z_i^2 - A \cos(2\pi z_i) \right], \qquad A = 10, \quad z_i \in [-5.12, 5.12]$$
 
-You can read more about this function in [Wikipedia](https://en.wikipedia.org/wiki/Rastrigin_function).
+The interesting part is how it is turned into something an EA can maximize. Two steps (read the code to see exactly how):
 
-Important Note: For the Rastrigin problem, the global optima is a minimum. In order to make it work for an evolutionary algorithm (which is typically trying to maximize fitness scores), is to add a minus sign. Now the optimum possible value is 0. You could alternatively change the problem to a minimization one (EvoTorch allows us to do that). 
+1. **Rescale.** Genes evolve in $[0, 1]$, but the ripple only shows up over the wider domain $[-5.12, 5.12]$ — over a raw $[0, 1]$ range the cosine barely completes one period and the landscape is just a smooth bowl. The rescaling also arranges for gene value $0.5$ to be the optimum.
+2. **Negate and normalize.** Rastrigin is a *minimization* problem (global optimum $f = 0$). Negating it — and squashing it onto roughly $[0, 1]$ — makes it a maximization objective on the same scale as `count_ones`, with the optimum at fitness $1.0$.
 
-`evolve.py` already has the plumbing to select a fitness function at the command line (`--fitness {count_ones,rastrigin}`) and a `count_ones` implementation to use as a reference. What's missing is the actual logic: `rastrigin` (marked `TODO (Part 3)`, currently raising `NotImplementedError`) — your job is to fill in the body. 
+([Rastrigin on Wikipedia](https://en.wikipedia.org/wiki/Rastrigin_function).)
 
-Evaluate how this more complex fitness function affects the evolutionary dynamics. In other words, note how the results from the analysis that you did for Part 2 changes when you change to a slightly harder problem. 
+#### Your task: implement the Ackley function
+
+`ackley` in `evolve.py` is a stub (`TODO (Part 3)`, currently raising `NotImplementedError`) — fill in the body. Follow the same recipe as `rastrigin`: rescale the genes into a sensible domain, make gene value $0.5$ the optimum, and negate/normalize so the EA can maximize it.
+
+Ackley is a different flavour of hard: a large, nearly-flat outer region with a single deep, narrow funnel at the optimum, textured with fine ripples. Getting the search *into* the funnel is the whole challenge. See [Ackley on Wikipedia](https://en.wikipedia.org/wiki/Ackley_function) for the formula and the standard constants.
+
+#### Keep the genome small
+
+These landscapes get dramatically harder as the number of dimensions grows. Start with `--genesize 2`, then try `3`. Much beyond that and the evolutionary algorithm has little chance within a reasonable budget — which is itself one of the things worth reporting.
+
+#### What to analyze
+
+Repeat the relevant parts of your Part 2 investigation on Ackley (and, where it helps the comparison, on the provided Rastrigin), and describe how the picture changes on a genuinely multimodal landscape: convergence speed, final fitness, whether there is still an optimal mutation rate, how GA compares to ES, whether crossover matters. Tie it back to your Part 2 conclusions — which hold up on a harder problem, and which don't?
 
 ---
 
 ### Part 4 – Quantitative Analysis
 
-Once you have a good handle on the rastrigin function, collect data from multiple runs and analyze:
+Once you have a good handle on the Ackley function, collect data from multiple runs and analyze:
 
 - The shape of fitness trajectories (early rapid progress vs. late-stage refinement)
 - Variance in final fitness across independent runs

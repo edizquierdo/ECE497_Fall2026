@@ -74,10 +74,6 @@ def parse_args():
     parser.add_argument("--fitness", type=str, default="count_ones",
                         choices=list(FITNESS_FUNCTIONS_CHOICES),
                         help="Fitness function to optimize (default: count_ones)")
-    parser.add_argument("--sparse_threshold", type=float, default=0.7,
-                        help="Fraction of genes that must be 'ON' before the 'sparse' "
-                             "fitness function gives any reward. Ignored unless "
-                             "--fitness sparse is used.")
     return parser.parse_args()
 
 def count_ones(x: torch.Tensor) -> torch.Tensor:
@@ -87,16 +83,6 @@ def count_ones(x: torch.Tensor) -> torch.Tensor:
     for fitness evaluation and final genotype interpretation.
     """
     return ((x > 0.5).float().sum(dim=-1)) / x.shape[-1]  # Normalize by genome length
-
-def step_pattern(x: torch.Tensor) -> torch.Tensor:
-    """Fitness function: reward genes matching a fixed alternating ON/OFF target pattern.
-
-    TODO (Part 3): implement this fitness function. It should use the same
-    thresholding convention as count_ones (values > 0.5 count as 'ON'), but
-    instead of rewarding all-ON, it should reward genes that match a fixed
-    alternating target pattern (e.g. [1,0,1,0,...]) at each position.
-    """
-    raise NotImplementedError("Part 3: implement step_pattern")
 
 def rastrigin_like(x: torch.Tensor) -> torch.Tensor:
     """Fitness function: a rugged, multimodal landscape based on the Rastrigin function.
@@ -110,27 +96,14 @@ def rastrigin_like(x: torch.Tensor) -> torch.Tensor:
     """
     raise NotImplementedError("Part 3: implement rastrigin_like")
 
-def sparse_reward(x: torch.Tensor, threshold: float = 0.7) -> torch.Tensor:
-    """Fitness function: like count_ones, but zero unless > threshold fraction of genes are ON.
-
-    TODO (Part 3): implement this fitness function. It should model a
-    sparse-reward landscape: no gradient signal at all below `threshold`,
-    then a useful reward signal above it.
-    """
-    raise NotImplementedError("Part 3: implement sparse_reward")
-
-FITNESS_FUNCTIONS_CHOICES = ("count_ones", "step", "rastrigin", "sparse")
+FITNESS_FUNCTIONS_CHOICES = ("count_ones", "rastrigin")
 
 def _resolve_fitness_func(fitness: str, sparse_threshold: float):
     """Look up a fitness function by name, binding extra params (e.g. sparse_threshold)."""
     if fitness == "count_ones":
         return count_ones
-    elif fitness == "step":
-        return step_pattern
     elif fitness == "rastrigin":
-        return rastrigin_like
-    elif fitness == "sparse":
-        return partial(sparse_reward, threshold=sparse_threshold)
+        return rastrigin
     else:
         raise ValueError(f"Unknown fitness function: {fitness}")
 
@@ -139,7 +112,7 @@ def run_evolution(popsize=10, gens=10, algo="GA", genesize=10,
                   tournament_size=3, eta=20, use_crossover=True,
                   elitism=True, verbose=False, seed=None,
                   device="auto", seed_genome_path=None, seed_noise=0.05,
-                  fitness="count_ones", sparse_threshold=0.7):
+                  fitness="count_ones"):
     """
     Run an Evolutionary Algorithm.
 
@@ -165,10 +138,8 @@ def run_evolution(popsize=10, gens=10, algo="GA", genesize=10,
             rest perturbed by `seed_noise`) instead of starting from scratch. Only
             supported when algo="GA" — raises ValueError if algo="ES".
         seed_noise: Stdev of the Gaussian perturbation applied to seed_genome_path copies.
-        fitness: Name of the fitness function to optimize -- one of "count_ones",
-            "step", "rastrigin", "sparse" (see FITNESS_FUNCTIONS_CHOICES).
-        sparse_threshold: Fraction of genes that must be ON before the "sparse"
-            fitness function gives nonzero reward. Ignored unless fitness="sparse".
+        fitness: Name of the fitness function to optimize -- one of "count_ones" or "rastrigin"
+          (see FITNESS_FUNCTIONS_CHOICES).
     """
 
     if seed is not None:
@@ -309,7 +280,6 @@ def main():
         seed_genome_path=args.seed_genome,
         seed_noise=args.seed_noise,
         fitness=args.fitness,
-        sparse_threshold=args.sparse_threshold,
     )
 
     if args.output:

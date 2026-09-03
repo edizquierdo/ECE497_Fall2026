@@ -96,13 +96,6 @@ def parse_args():
         help="Fitness function to optimize (default: count_ones)"
     )
     parser.add_argument(
-        "--sparse_threshold",
-        type=float,
-        default=0.7,
-        help="Fraction of genes that must be ON before the 'sparse' fitness function "
-             "gives any reward. Ignored unless --fitness sparse is used."
-    )
-    parser.add_argument(
         "--data_output",
         type=str,
         default=None,

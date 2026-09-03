@@ -142,8 +142,7 @@ Useful command-line options include:
 | `--fitness_output FILE` | Save per-generation best/avg/worst fitness to this `.npz` file (keys `best`/`avg`/`worst`), so you can reload and compare fitness curves across configurations without re-running evolution | `None` |
 | `--seed_genome FILE` | Seed the initial population around a genome saved by a previous `--output` run (must match `--genesize`) instead of starting from scratch — one exact copy plus the rest perturbed by `--seed_noise`. Only supported with `--algorithm GA`, not `--algorithm ES` | `None` |
 | `--seed_noise` | Stdev of the Gaussian perturbation applied to `--seed_genome` copies | `0.05` |
-| `--fitness` | Fitness function to optimize: `count_ones`, `step`, `rastrigin`, or `sparse`. Only `count_ones` is implemented out of the box — the other three are stubs you'll implement in Part 3 (see below) | `count_ones` |
-| `--sparse_threshold` | Fraction of genes that must be ON before the `sparse` fitness function gives any reward. Ignored unless `--fitness sparse` | `0.7` |
+| `--fitness` | Fitness function to optimize: `count_ones` or `rastrigin`. Only `count_ones` is implemented out of the box — the other one is a stub you'll implement in Part 3 (see below) | `count_ones` |
 
 For example,
 
@@ -215,7 +214,6 @@ Useful command-line options for `study.py` include:
 | `--verbose` | Print progress information | off |
 | `--device` | Hardware device to use ("auto", "cuda", "cuda:0", "mps", "cpu") | "auto" |
 | `--fitness` | Fitness function to sweep over (see `evolve.py`'s `--fitness`) | `count_ones` |
-| `--sparse_threshold` | Threshold for the `sparse` fitness function | `0.7` |
 
 **`study.py` only sweeps `mut_stdev`.** Part 2 below asks you to investigate five things — population
 size, mutation standard deviation, number of generations, genome length, and algorithm choice — but
@@ -303,21 +301,30 @@ Questions to consider include:
 
 ### Part 3 – Change the Fitness Function
 
-Maximizing ones is a relatively trivial problem. Implement one or more alternative fitness functions:
+Maximizing ones is a relatively trivial problem. Implement the rastrigin function. 
 
-- **Sparse reward**: Only reward individuals with > X% of genes ON
-- **Step function**: Reward specific 0/1 patterns (e.g., alternating ON/OFF genes)
-- **Rastrigin-like**: Create a rugged landscape with many local optima
+The Rastrigin function is a non-linear, multimodal test problem used to evaluate performance in mathematical optimization. It features a vast number of regularly distributed local minima that trap standard algorithms, making it a tough challenge for global search method. 
 
-`evolve.py` already has the plumbing to select a fitness function at the command line (`--fitness {count_ones,step,rastrigin,sparse}`, plus `--sparse_threshold` for the sparse case — see the CLI options table above) and a `count_ones` implementation to use as a reference. What's missing is the actual logic: `step_pattern`, `rastrigin_like`, and `sparse_reward` in `evolve.py` are stubs (marked `TODO (Part 3)`, each currently raising `NotImplementedError`) — your job is to fill in their bodies. You don't need to implement all three (although you can). Pick at least one to evaluate below.
+$$f(\mathbf{x}) = An + \sum_{i=1}^{n} \left[ x_i^2 - A \cos(2\pi x_i) \right]$$
 
-Evaluate how these changes affect evolutionary dynamics. In other words, note how the results from the analysis that you did for Part 2 changes when you change to a slightly harder problem. 
+where:
+- $A = 10$ is a constant.
+- $n$ is the number of dimensions.
+- $x_i \in [-5.12, 5.12]$ for $i = 1, 2, \dots, n$.
+
+You can read more about this function in [Wikipedia](https://en.wikipedia.org/wiki/Rastrigin_function).
+
+Important Note: For the Rastrigin problem, the global optima is a minimum. In order to make it work for an evolutionary algorithm (which is typically trying to maximize fitness scores), is to add a minus sign. Now the optimum possible value is 0. You could alternatively change the problem to a minimization one (EvoTorch allows us to do that). 
+
+`evolve.py` already has the plumbing to select a fitness function at the command line (`--fitness {count_ones,rastrigin}`) and a `count_ones` implementation to use as a reference. What's missing is the actual logic: `rastrigin` (marked `TODO (Part 3)`, currently raising `NotImplementedError`) — your job is to fill in the body. 
+
+Evaluate how this more complex fitness function affects the evolutionary dynamics. In other words, note how the results from the analysis that you did for Part 2 changes when you change to a slightly harder problem. 
 
 ---
 
 ### Part 4 – Quantitative Analysis
 
-Collect data from multiple runs and analyze:
+Once you have a good handle on the rastrigin function, collect data from multiple runs and analyze:
 
 - The shape of fitness trajectories (early rapid progress vs. late-stage refinement)
 - Variance in final fitness across independent runs

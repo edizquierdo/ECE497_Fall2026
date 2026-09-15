@@ -290,12 +290,10 @@ def make_fitness_fn(hidden=None, activation="tanh", inputs=None, signs=None,
                       when given; defaults to `[hidden]` otherwise (today's
                       exact single-hidden-layer behavior).
         fitness_mode: 'sign' (default) = fraction of points with the correct
-                      output sign, exactly today's behavior. 'mse' = smooth
-                      alternative: squash the output through tanh to (-1,1),
-                      compute mean squared error against the +-1 signs
-                      (range [0,4]), and return 1 - mse/4, clamped to [0,1]
-                      so 1.0 still means "perfect" (needed for
-                      run_neuroevolution's `best_fit >= 1.0` early-stop).
+                      output sign, exactly today's behavior; implemented
+                      below. 'mse' = a smooth alternative fitness -- left as
+                      a Part 1 TODO in the `fitness_fn` closure below (see
+                      the TODO comment there for the exact recipe).
 
     Returns:
         A callable (genomes: Tensor[pop, n_genes]) -> Tensor[pop] suitable
@@ -356,9 +354,39 @@ def make_fitness_fn(hidden=None, activation="tanh", inputs=None, signs=None,
             correct = (output * signs_dev.unsqueeze(0) >= 0).float().sum(dim=1)  # (pop,)
             return correct / N  # normalised to [0, 1]
         else:  # "mse"
-            pred = torch.tanh(output)                                       # squash to (-1, 1)
-            mse = ((pred - signs_dev.unsqueeze(0)) ** 2).mean(dim=1)         # (pop,), in [0, 4]
-            return (1.0 - mse / 4.0).clamp(0.0, 1.0)
+            # TODO (Part 1 of the assignment): implement the 'mse' fitness
+            # mode -- a smooth alternative to 'sign' above. Instead of only
+            # checking which side of zero the output falls on, it should
+            # reward how close the output actually is to the correct +-1
+            # target. Follow the same batched/vectorized style as the
+            # 'sign' branch above (no per-individual Python loop): `output`
+            # is a (pop, N) batch of network outputs, `signs_dev` is (N,)
+            # and broadcasts against it via `.unsqueeze(0)`, exactly as
+            # used above.
+            #
+            # Recipe:
+            #   1. Squash `output` through tanh so it's bounded to (-1, 1),
+            #      the same range as `signs_dev`'s +-1 targets:
+            #          pred = torch.tanh(output)
+            #   2. Compute the mean squared error between `pred` and
+            #      `signs_dev`, across the N data points, per individual:
+            #          mse = ((pred - signs_dev.unsqueeze(0)) ** 2).mean(dim=1)
+            #      Since both are in [-1, 1], `mse` ranges over [0, 4]
+            #      (worst case: pred=-1 when target=+1, or vice versa, for
+            #      every point).
+            #   3. Convert error into fitness, bigger = better, on the same
+            #      0-to-1 scale as 'sign' mode, where 1.0 still means
+            #      "perfect" (this matters: run_neuroevolution's
+            #      early-stopping check is `best_fit >= 1.0`):
+            #          fitness = 1.0 - mse / 4.0
+            #      Clamp to [0, 1] in case of numerical edge cases.
+            #
+            # The return value must be a (pop,) tensor, like the 'sign'
+            # branch returns.
+            raise NotImplementedError(
+                "Part 1: implement the 'mse' fitness_mode in make_fitness_fn(). "
+                "See the TODO comment above and the README's Part 1."
+            )
 
     return fitness_fn
 
@@ -507,6 +535,15 @@ def run_neuroevolution(hidden=3, popsize=100, gens=200, mut_stdev=0.5,
     if seed is not None:
         torch.manual_seed(seed)
         np.random.seed(seed)
+        # torch.manual_seed() only seeds the CPU (and CUDA) default
+        # generators -- PyTorch's MPS backend keeps its own separate RNG
+        # state that is untouched by it. Without this, population
+        # initialization on `device="mps"` (the default on Apple Silicon
+        # Macs) draws from whatever MPS RNG state earlier, unrelated calls
+        # in the same process happened to leave behind, so the same --seed
+        # can silently produce different results from run to run.
+        if torch.backends.mps.is_available():
+            torch.mps.manual_seed(seed)
 
     target_device = resolve_device(device)
     if verbose:

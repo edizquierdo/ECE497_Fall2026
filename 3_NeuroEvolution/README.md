@@ -167,7 +167,7 @@ Useful command-line options include:
 | `--no-elitism` | Disable elitism (elitism is enabled by default) | elitism on |
 | `--init_bounds LOW HIGH` | Initial genome sampling bounds | `-1.0 1.0` |
 | `--activation` | Hidden layer activation function (`tanh`, `sigmoid`, or `relu`) | `tanh` |
-| `--fitness_mode` | Fitness function: `sign` (fraction of points classified with the correct sign) or `mse` (smooth 1 − normalized-MSE against the ±1 targets) | `sign` |
+| `--fitness_mode` | Fitness function: `sign` (fraction of points classified with the correct sign — implemented for you) or `mse` (smooth 1 − normalized-MSE against the ±1 targets — you implement this in Part 1) | `sign` |
 | `--task` | Boolean truth table to solve when `--random`/`--convex` aren't given (`xor`, `and`, `or`, `xnor`) | `xor` |
 | `--vizperf` | Plot fitness over generations | `False` |
 | `--vizbound` | Plot the decision boundary of the best evolved network | `False` |
@@ -349,6 +349,18 @@ Run the default configuration and verify that the network reaches perfect fitnes
 python evolve.py --verbose --vizperf --vizbound
 ```
 
+#### Implement the `mse` Fitness Mode
+
+`make_fitness_fn` in `evolve.py` computes fitness two ways, selected by `--fitness_mode`. The `sign` branch (today's default, which you just answered questions about above) is fully implemented. The `mse` branch is left as a `TODO` for you to implement: a *smooth* alternative to `sign` that rewards how close the output actually is to the correct ±1 target, rather than only which side of zero it lands on. Follow the recipe in the `TODO` comment directly above the `mse` branch, matching the same batched, vectorized style the `sign` branch already uses (no per-individual Python loop).
+
+Verify your implementation the same way you verified the default configuration above:
+
+```bash
+python evolve.py --fitness_mode mse --verbose --vizperf
+```
+
+It should also reach perfect fitness. You'll compare both fitness modes directly in Part 3.
+
 ---
 
 ### Part 2 – Explore Neuroevolution Parameters
@@ -374,15 +386,16 @@ Questions to consider include:
 
 ### Part 3 – Explore the Rest of the Neural Controller
 
-`evolve.py` already ships working support for every direction below via CLI
-flags — this part is about designing a fair comparison and interpreting what
-you see, not about writing new code (Parts 1–2 already exercised `--hidden`;
-this part is where you exercise everything else the controller can do).
-Investigate at least two of the following:
+By this point `evolve.py` ships working support for every direction below via
+CLI flags (the `mse` fitness mode is the one exception — it's the code you
+implemented in Part 1) — this part is about designing a fair comparison and
+interpreting what you see, not about writing new code (Parts 1–2 already
+exercised `--hidden`; this part is where you exercise everything else the
+controller can do). Investigate at least two of the following:
 
 - **Activation function**: Compare `--activation tanh`, `sigmoid`, and `relu`, holding everything else fixed. Does the choice of activation affect how quickly the network converges, or how reliably it does?
 - **Network depth**: Compare a single hidden layer (`--hidden`) against two hidden layers of the same width (`--hidden_sizes h h`) at *similar total parameter count* — not matching neuron counts: two hidden layers of size 4 have 37 weights and biases total, while a single hidden layer needs roughly 8 neurons to reach a similar count, since the hidden-to-hidden connection alone costs `h²` weights (`genome_size(hidden=..., hidden_sizes=...)` computes either count directly). Does depth help or hurt performance on XOR? Why?
-- **Fitness function**: Compare `--fitness_mode sign` (today's default: fraction of points with the correct sign) against `--fitness_mode mse` (a smooth alternative: tanh-squashed output vs. the ±1 target, mean squared error). How does the shape of the fitness landscape change evolutionary dynamics — smoother convergence, different failure modes, more or less sensitivity to `--mut_stdev`?
+- **Fitness function**: Compare `--fitness_mode sign` (today's default: fraction of points with the correct sign) against `--fitness_mode mse` (the smooth alternative you implemented in Part 1: tanh-squashed output vs. the ±1 target, mean squared error). How does the shape of the fitness landscape change evolutionary dynamics — smoother convergence, different failure modes, more or less sensitivity to `--mut_stdev`? (If you want to compare the two modes on genuinely equal footing, re-score sign-accuracy on the final evolved network directly, rather than comparing `sign` and `mse`'s raw fitness values side by side — they're computed on different scales.)
 - **Task**: Compare `--task xor` against `--task and`, `or`, or `xnor` (same four corner points, different labels). Is XOR harder or easier than these alternatives? What does that say about which of the four is/isn't linearly separable?
 - **Custom problems**: Use `--random` and `--convex` to evaluate network performance on alternative classification challenges. How does architecture affect performance on convex vs. random problems?
 
@@ -440,6 +453,7 @@ Organize the body of your report into one section per assignment part. Each sect
 
 - Your answers to the conceptual questions posed in Part 1 (weight/bias counts, why fitness checks sign rather than exact value, expected fitness of a random genome, why zero hidden neurons can't solve XOR, and what's lost by only keeping the backfilled fitness curve instead of the explicit `convergence_gen`).
 - Verification that the default configuration reaches perfect fitness — include the fitness-over-generations plot (`--vizperf`) and decision boundary plot (`--vizbound`) from the default run, with a brief caption.
+- Confirmation that your `mse` fitness mode implementation also reaches perfect fitness (a fitness-over-generations plot from `--fitness_mode mse` is sufficient — no need to re-verify with `--vizbound` too).
 
 **Part 2 — Explore Neuroevolution Parameters**
 

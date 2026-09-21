@@ -8,6 +8,9 @@ Instead of training a network with gradient descent and backpropagation, you wil
 
 Your goal is not simply to run the code, but to understand how a neural network represents a function, why hidden layers are necessary for certain tasks, and how neuroevolution finds good network weights without any gradient information.
 
+## Checkpoints and Final Due Date
+Note also that this project has a Checkpoint which includes Required Parts 1 and 2 that will be due Friday before class. No reporting necessary for Friday. The checkpoint will involve running code on your laptop to demonstrate and showing figures. Then the final project will be due Monday before class, which includes Required Part 3 and report. 
+
 ---
 
 ## Learning Objectives
@@ -31,6 +34,7 @@ By completing this project, you will learn how to:
 What follows below is ONE possible path for this project. However, you do NOT have to take this path. The required learning goals are fixed; the implementation and experiments are flexible. Take your own path. You are just as welcome to explore on your own, or to follow along. 
 
 To encourage some of you to go off on your own, this assignment now includes less REQUIRED components. This will hopefully allow some of you to explore on your own. The REQUIRED components are labeled clearly -- everything else is OPTIONAL. 
+
 
 ---
 

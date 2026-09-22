@@ -1,14 +1,8 @@
-# Today, demos: 
-#. 1. Single neuron with two inputs
-#. 2. Simple perceptron with two weights, with training - visualizing learning.
-#  3. More general perceptron (any number of weights), and then building a neural network with also training
-#  4. Testing NN on a non-trivial non-linearly separable task and seeing results.
-
 import numpy as np
 import matplotlib.pyplot as plt
 
 def step(x):
-    return x>0
+    return x>=0
 
 def sigmoid(x):
     return 1/(1+np.exp(-x))
@@ -16,8 +10,8 @@ def sigmoid(x):
 class Perceptron():
 
     def __init__(self, inputs):
-        self.W = 0.1*(np.random.random(size=(inputs))*2 - 1)
-        self.bias = 0.1*(np.random.random()*2 - 1)
+        self.W = 1*(np.random.random(size=(inputs))*2 - 1)
+        self.bias = 1*(np.random.random()*2 - 1)
         self.lc = 0.1 
     
     def forward(self, I):
@@ -37,7 +31,7 @@ class NeuralNet():
         self.nO = Perceptron(hiddenUnits)
         # We also establish the place to store its output
         self.output = 0 
-        self.lc = 0.1 # learning rate 
+        self.lc = 0.1  # learning rate 
 
     def forward(self, Input): 
         for i in range(self.nh):
@@ -82,26 +76,26 @@ class NeuralNet():
         # We are done, let's return the error, same as before
         return abs(errorOutput)
     
-    def viz(self,dataset,target,density):
-        # Density will be the number of points per dimension we will be testing! 
+    def viz(self,dataset,target,density,ax=None):
+        # Density will be the number of points per dimension we will be testing!
         # Let's create a lot of X and Y points in the possible space of input data
+        if ax is None:
+            ax = plt.gca() # Fall back to the current axes if none was given
         X = np.linspace(-1.05, 1.05, density)
         Y = np.linspace(-1.05, 1.05, density)
         output = np.zeros((density,density))
         i = 0
-        for x in X: 
+        for x in X:
             j = 0
             for y in Y:
                 output[i,j] = self.forward([x,y]) # We provide the network with the test input, and record the output
                 j += 1
             i += 1
-        plt.contourf(X,Y,output)
-        plt.colorbar()
-        plt.xlabel("X")
-        plt.ylabel("Y")
-        for i in range(len(dataset)): # Let's also plot the data we used for training as disks 
+        ax.contourf(X,Y,output)
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        for i in range(len(dataset)): # Let's also plot the data we used for training as disks
             if target[i] == 1:
-                plt.plot(dataset[i][0],dataset[i][1],'wo')
+                ax.plot(dataset[i][0],dataset[i][1],'wo')
             else:
-                plt.plot(dataset[i][0],dataset[i][1],'wx')
-        plt.show()
+                ax.plot(dataset[i][0],dataset[i][1],'wx')

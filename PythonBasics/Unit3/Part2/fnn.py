@@ -3,8 +3,11 @@
 # Works with any number of hidden layers/neurons.
 # Supports the following activation functions: sigmoidm, tanh, relu, linear, gaussian, and identity.
 ##################################################################################
-
 import numpy as np
+
+# Large weights can push sigmoid/tanh inputs high enough to overflow exp();
+# the result (0.0) is still correct, so silence the warning.
+np.seterr(over='ignore')
 
 # ----------------------------------------------
 # Feedforward Artificial Neural Network (v1)

@@ -3,17 +3,17 @@ import matplotlib.pyplot as plt
 
 class Generational():
 
-    def __init__(self, fitnessFunction, popsize, genesize, recombProb, mutatProb, eliteprop, generations):
+    def __init__(self, fitnessFunction, genesize, generations, **kwargs):
         self.fitnessFunction = fitnessFunction
-        self.popsize = popsize
         self.genesize = genesize
-        self.recombProb = recombProb
-        self.mutatProb = mutatProb
-        self.elite = int(eliteprop*popsize)
         self.generations = generations
-        self.pop = np.random.rand(popsize,genesize)*2 - 1
-        self.fitness = np.zeros(popsize)
-        self.rank = np.zeros(popsize,dtype=int)
+        self.popsize = kwargs['popsize']
+        self.recombProb = kwargs['recombProb']
+        self.mutatProb = kwargs['mutatProb']
+        self.elite = int(kwargs['eliteprop']*self.popsize)
+        self.pop = np.random.rand(self.popsize,genesize)*2 - 1
+        self.fitness = np.zeros(self.popsize)
+        self.rank = np.zeros(self.popsize,dtype=int)
         self.avgHistory = np.zeros(generations)
         self.bestHistory = np.zeros(generations)
         self.gen = 0
@@ -95,17 +95,17 @@ class Generational():
 
 class Microbial():
 
-    def __init__(self, fitnessFunction, popsize, genesize, recombProb, mutatProb, demeSize, generations):
+    def __init__(self, fitnessFunction, genesize, generations, **kwargs):
         self.fitnessFunction = fitnessFunction
-        self.popsize = popsize
         self.genesize = genesize
-        self.recombProb = recombProb
-        self.mutatProb = mutatProb
-        self.demeSize = int(demeSize/2)
         self.generations = generations
-        self.tournaments = generations*popsize
-        self.pop = np.random.rand(popsize,genesize)*2 - 1
-        self.fitness = np.zeros(popsize)
+        self.popsize = kwargs['popsize']
+        self.recombProb = kwargs['recombProb']
+        self.mutatProb = kwargs['mutatProb']
+        self.demeSize = int(kwargs['demeSize']/2)
+        self.tournaments = generations*self.popsize
+        self.pop = np.random.rand(self.popsize,genesize)*2 - 1
+        self.fitness = np.zeros(self.popsize)
         self.avgHistory = np.zeros(generations)
         self.bestHistory = np.zeros(generations)
         self.gen = 0
@@ -121,10 +121,9 @@ class Microbial():
 
     def fitStats(self):
         self.bestind = self.pop[np.argmax(self.fitness)]
-        #(self.bestind)
         bestfit = np.max(self.fitness)
         avgfit = np.mean(self.fitness)
-        print(self.gen,": ",avgfit," ",bestfit)
+        #print(self.gen,": ",avgfit," ",bestfit)
         self.avgHistory[self.gen]=avgfit
         self.bestHistory[self.gen]=bestfit
         return avgfit, bestfit, self.bestind
@@ -163,31 +162,36 @@ class Microbial():
 
 class HillClimber():
 
-    def __init__(self, fitnessFunction, genesize, mutatProb, generations):
+    def __init__(self, fitnessFunction, genesize, generations, **kwargs):
         # Save parameters as attributes in the class
         self.fitnessFunction = fitnessFunction
         self.genesize = genesize
-        self.mutatProb = mutatProb
         self.generations = generations
+        self.mutatProb = kwargs['mutatProb']
         # Initialize climber at random
         self.ind = np.random.rand(genesize) * 2 - 1
         # 1. Calculate individual's fitness score
         self.fitness = self.fitnessFunction(self.ind)
-        # Keep track of the history of the fitness
-        self.fitnessHistory = np.zeros(generations)
-        self.fitnessHistory[0] = self.fitness
+        # Keep track of the history of the best fitness found so far
+        self.bestHistory = np.zeros(generations)
+        self.bestHistory[0] = self.fitness
 
     def showFitness(self):
-        plt.plot(self.fitnessHistory)
+        plt.plot(self.bestHistory)
         plt.xlabel("Generations")
         plt.ylabel("Fitness")
         plt.title("Best and average fitness")
         plt.show()
-    
+        return self.bestHistory
+
+    def fitStats(self):
+        # Single individual, so "avg" and "best" are the same
+        return self.fitness, self.fitness, self.ind
+
     def run(self):
         # 2. Start the loop for the number of generations
         for g in range(1,self.generations):
-            print(g,self.fitness)
+            #print(g,self.fitness)
             # 3. Create an offspring of the parent through a mutation
             newindividual = self.ind + np.random.normal(0.0,self.mutatProb,size=self.genesize)
             newindividual = np.clip(newindividual, -1, 1)
@@ -199,25 +203,39 @@ class HillClimber():
                 self.ind = newindividual
                 self.fitness = newfitness
             # 6. Keep track of fitness over time
-            self.fitnessHistory[g] = self.fitness
+            self.bestHistory[g] = self.fitness
 
 class ParallelHillClimber():
 
-    def __init__(self, popsize, fitnessFunction, genesize, mutatProb, generations):
+    def __init__(self, fitnessFunction, genesize, generations, **kwargs):
         # Save parameters as attributes in the class
-        self.fitnessFunction = fitnessFunction
         self.genesize = genesize
-        self.mutatProb = mutatProb
         self.generations = generations
-        self.popsize = popsize
+        self.mutatProb = kwargs['mutatProb']
+        self.popsize = kwargs['popsize']
+        # fitnessFunction evaluates one genotype at a time; apply it across the population
+        self.fitnessFunction = lambda pop: np.array([fitnessFunction(ind) for ind in pop])
         # Initialize climber at random
-        self.pop = np.random.rand(popsize,genesize) * 2 - 1
+        self.pop = np.random.rand(self.popsize,genesize) * 2 - 1
         # 1. Calculate everyones fitness score
         self.fitness = self.fitnessFunction(self.pop)
-        print(self.fitness)
-        # Keep track of the history of the fitness
-        self.fitnessHistory = np.zeros((generations,popsize))
-        self.fitnessHistory[0] = self.fitness
+        # Keep track of the history of the best fitness in the population
+        self.bestHistory = np.zeros(generations)
+        self.bestHistory[0] = np.max(self.fitness)
+
+    def showFitness(self):
+        plt.plot(self.bestHistory)
+        plt.xlabel("Generations")
+        plt.ylabel("Fitness")
+        plt.title("Best and average fitness")
+        plt.show()
+        return self.bestHistory
+
+    def fitStats(self):
+        bestind = self.pop[np.argmax(self.fitness)]
+        bestfit = np.max(self.fitness)
+        avgfit = np.mean(self.fitness)
+        return avgfit, bestfit, bestind
 
     def run(self):
         # 2. Start the loop for the number of generations
@@ -234,5 +252,5 @@ class ParallelHillClimber():
                     self.pop[i] = newpop[i]
                     self.fitness[i] = newfitness[i]
             # 6. Keep track of fitness over time
-            self.fitnessHistory[g] = self.fitness
+            self.bestHistory[g] = np.max(self.fitness)
 

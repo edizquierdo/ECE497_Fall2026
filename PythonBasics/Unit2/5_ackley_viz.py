@@ -3,7 +3,9 @@ import matplotlib.pyplot as plt
 
 def ackley(x):
     return (
-        
+        -20 * torch.exp(-0.2 * torch.sqrt(torch.sum(x**2, dim=-1) / 2))
+        - torch.exp(torch.sum(torch.cos(2 * torch.pi * x), dim=-1) / 2)
+        + 20 + torch.e
     )
 
 # 2-D grid

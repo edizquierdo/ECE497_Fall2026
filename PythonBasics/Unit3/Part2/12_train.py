@@ -2,7 +2,8 @@ import numpy as np
 import perceptron as pt
 import matplotlib.pyplot as plt
 
-dur = 10000 # Number of learning trials
+dur = 20000 # Number of learning trials
+
 dataset = [[-1,-1],[-1,1],[1,-1],[1,1]] # Same as before, but instead of 0s and 1s,... -1s and 1s.. 
 target = [0,1,1,0]  # So this would mean we are training for XOR !!! 
 
@@ -14,14 +15,14 @@ def train(dur, dataset, target):
         for j in range(len(dataset)):
             error[i] += a.train(dataset[j],target[j])
 
-    plt.plot(error)
-    plt.xlabel("Training time")
-    plt.ylabel("Error")
-    plt.show()        
-    a.viz(dataset,target,100)
+    # plt.plot(error)
+    # plt.xlabel("Training time")
+    # plt.ylabel("Error")
+    # plt.show()        
+    # a.viz(dataset,target,100)
     return error
 
-repetitions = 10
+repetitions = 100
 error = np.zeros((repetitions, dur))
 for r in range(repetitions):
     error[r] = train(dur, dataset, target)

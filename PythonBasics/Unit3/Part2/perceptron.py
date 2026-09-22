@@ -16,8 +16,8 @@ def sigmoid(x):
 class Perceptron():
 
     def __init__(self, inputs):
-        self.W = np.random.random(size=(inputs))*2 - 1
-        self.bias = np.random.random()*2 - 1
+        self.W = 0.1*(np.random.random(size=(inputs))*2 - 1)
+        self.bias = 0.1*(np.random.random()*2 - 1)
         self.lc = 0.1 
     
     def forward(self, I):

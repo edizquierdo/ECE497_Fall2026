@@ -9,7 +9,7 @@ class Generational():
         self.generations = generations
         self.popsize = kwargs['popsize']
         self.recombProb = kwargs['recombProb']
-        self.mutatProb = kwargs['mutatProb']
+        self.mutatStd = kwargs['mutatStd']
         self.elite = int(kwargs['eliteprop']*self.popsize)
         self.pop = np.random.rand(self.popsize,genesize)*2 - 1
         self.fitness = np.zeros(self.popsize)
@@ -56,7 +56,7 @@ class Generational():
             tempfitness = self.fitness.copy()
             for i in range(self.popsize):
                 self.rank[i]=int(np.argmax(tempfitness))
-                tempfitness[self.rank[i]]=0.0
+                tempfitness[self.rank[i]]=-np.inf
 
             # Start new generation
             new_pop = np.zeros((self.popsize,self.genesize))
@@ -83,7 +83,7 @@ class Generational():
                         new_pop[i][k] = self.pop[b][k]
 
                 # Mutate child and make sure they stay within bounds
-                new_pop[i] += np.random.normal(0.0,self.mutatProb,size=self.genesize)
+                new_pop[i] += np.random.normal(0.0,self.mutatStd,size=self.genesize)
                 new_pop[i] = np.clip(new_pop[i],-1,1)
 
                 # Recalculate their fitness
@@ -101,7 +101,7 @@ class Microbial():
         self.generations = generations
         self.popsize = kwargs['popsize']
         self.recombProb = kwargs['recombProb']
-        self.mutatProb = kwargs['mutatProb']
+        self.mutatStd = kwargs['mutatStd']
         self.demeSize = int(kwargs['demeSize']/2)
         self.tournaments = generations*self.popsize
         self.pop = np.random.rand(self.popsize,genesize)*2 - 1
@@ -139,10 +139,10 @@ class Microbial():
             self.fitStats()
             for i in range(self.popsize):
                 # Step 1: Pick 2 individuals
-                a = np.random.randint(0,self.popsize-1)
-                b = np.random.randint(a-self.demeSize,a+self.demeSize-1)%self.popsize   ### Restrict to demes
+                a = np.random.randint(0,self.popsize)
+                b = np.random.randint(a-self.demeSize,a+self.demeSize+1)%self.popsize   ### Restrict to demes
                 while (a==b):   # Make sure they are two different individuals
-                    b = np.random.randint(a-self.demeSize,a+self.demeSize-1)%self.popsize   ### Restrict to demes
+                    b = np.random.randint(a-self.demeSize,a+self.demeSize+1)%self.popsize   ### Restrict to demes
                 # Step 2: Compare their fitness
                 if (self.fitness[a] > self.fitness[b]):
                     winner = a
@@ -155,7 +155,7 @@ class Microbial():
                 newind = np.array([self.pop[winner][k] if r[k] >= self.recombProb else self.pop[loser][k] for k in range(self.genesize)])
                 self.pop[loser] = newind
                 # Step 4: Mutate loser and make sure new organism stays within bounds
-                self.pop[loser] += np.random.normal(0.0,self.mutatProb,size=self.genesize)
+                self.pop[loser] += np.random.normal(0.0,self.mutatStd,size=self.genesize)
                 self.pop[loser] = np.clip(self.pop[loser],-1,1)
                 # Step 5: Update fitness
                 self.fitness[loser] = self.fitnessFunction(self.pop[loser])
@@ -167,7 +167,7 @@ class HillClimber():
         self.fitnessFunction = fitnessFunction
         self.genesize = genesize
         self.generations = generations
-        self.mutatProb = kwargs['mutatProb']
+        self.mutatStd = kwargs['mutatStd']
         # Initialize climber at random
         self.ind = np.random.rand(genesize) * 2 - 1
         # 1. Calculate individual's fitness score
@@ -193,7 +193,7 @@ class HillClimber():
         for g in range(1,self.generations):
             #print(g,self.fitness)
             # 3. Create an offspring of the parent through a mutation
-            newindividual = self.ind + np.random.normal(0.0,self.mutatProb,size=self.genesize)
+            newindividual = self.ind + np.random.normal(0.0,self.mutatStd,size=self.genesize)
             newindividual = np.clip(newindividual, -1, 1)
             # 4. Evaluate the fitness of this new individual 
             newfitness = self.fitnessFunction(newindividual)
@@ -211,7 +211,7 @@ class ParallelHillClimber():
         # Save parameters as attributes in the class
         self.genesize = genesize
         self.generations = generations
-        self.mutatProb = kwargs['mutatProb']
+        self.mutatStd = kwargs['mutatStd']
         self.popsize = kwargs['popsize']
         # fitnessFunction evaluates one genotype at a time; apply it across the population
         self.fitnessFunction = lambda pop: np.array([fitnessFunction(ind) for ind in pop])
@@ -241,7 +241,7 @@ class ParallelHillClimber():
         # 2. Start the loop for the number of generations
         for g in range(1,self.generations):
             # 3. Create an offspring of the parent through a mutation
-            newpop = self.pop + np.random.normal(0.0,self.mutatProb,size=(self.popsize,self.genesize))
+            newpop = self.pop + np.random.normal(0.0,self.mutatStd,size=(self.popsize,self.genesize))
             newpop = np.clip(newpop, -1, 1)
             # 4. Evaluate the fitness of this new individual 
             newfitness = self.fitnessFunction(newpop)

@@ -1,7 +1,7 @@
 ##################################################################################
 # Feed-forward neural network for teaching and learning.
 # Works with any number of hidden layers/neurons.
-# Supports the following activation functions: sigmoidm, tanh, relu, linear, gaussian, and identity.
+# Supports the following activation functions: sigmoid, tanh, relu, linear, and gaussian.
 ##################################################################################
 import numpy as np
 
@@ -102,7 +102,7 @@ class FNN:
     def setParams(self, params):
         """ Set the weights, biases, and activation functions of the neural network 
         Weights and biases are set directly by a parameter;
-        The activation function for each layer is set by the parameter with the highest value (one for each possible one out of the six)
+        The activation function for each layer is set by the parameter with the highest value (one for each possible one out of the five)
         """
         self.weights = []
         start = 0

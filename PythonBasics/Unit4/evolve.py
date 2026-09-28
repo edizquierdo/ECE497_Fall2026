@@ -1,85 +1,59 @@
 ##################################################################################
-# Example script for evolving a feedforward neural network to solve i/o task
+# Evolve a feedforward neural network to control a Braitenberg vehicle so that
+# it approaches a light source (phototaxis).
+# Run this first; it saves the best genotype to best.npy (used by sim.py).
 ##################################################################################
-
 import numpy as np
-import matplotlib.pyplot as plt
-import fnn 
+import fnn
 import eas as ea
+import env
 
-# Parameters of the XOR task
-dataset = [[-1,-1],[-1,1],[1,-1],[1,1]]
-labels = [0,1,1,0]
-
-# # Parameters for another task
-dataset = [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1],[-0.5,-0.5],[-0.5,0.5],[0.5,-0.5],[0.5,0.5]]
-labels = [1,1,1,1,1,1,1,1,0,0,0,0]
+# Parameters of the task
+duration = 200      # time steps per trial
+distance = 5        # starting distance from the light
+reps = 4            # trials (random starting position and heading) per evaluation
 
 # Parameters of the neural network
-layers = [2,5,1]
+layers = [2,4,2]
+weightrange = 5     # genes are in [-1,1]; scale them so weights and biases are in [-5,5]
 
 # Parameters of the evolutionary algorithm
-genesize = np.sum(np.multiply(layers[1:],layers[:-1])) + np.sum(layers[1:]) + (len(layers)-1)*5  # Which activation function of 5 possible 
+genesize = np.sum(np.multiply(layers[1:],layers[:-1])) + np.sum(layers[1:]) + (len(layers)-1)*5  # Which activation function of 5 possible
 print("Number of parameters:",genesize)
 
 popsize = 50
 recombProb = 0.5
-mutatStd = 0.01
-generations = 1000
+mutatStd = 0.05
+generations = 50
 demeSize = 5
 eliteprop = 0.1
 
 def fitnessFunction(genotype):
-    # Step 1: Create the neural network.
-    a = fnn.FNN(layers)
+    # Step 1: Create the neural network and set the parameters according to the genotype.
+    controller = fnn.FNN(layers)
+    controller.weightrange = weightrange
+    controller.biasrange = weightrange
+    controller.setParams(genotype)
 
-    # Step 2. Set the parameters of the neural network according to the genotype.
-    a.setParams(genotype)
-    
-    # Step 3. For each training point in the dataset, evaluate the current neural network.
-    error = 0.0
-    for i in range(len(dataset)):
-        temperror = np.abs(a.forward(dataset[i])[0,0] - labels[i])
-        if temperror > 1:
-            error += 1
-        else:
-            error += temperror
-        #error += np.abs(np.clip(a.forward(dataset[i]),0,1) - labels[i])
+    fitness = 0.0
+    for r in range(reps):
+        # Step 2: Create the body and the environment.
+        agent = env.Braitenberg(controller, distance)
+        light = env.Light()
 
-    return 1 - (error/len(dataset))
+        # Step 3: Run the simulation, rewarding the agent for being close to the light at every step.
+        for t in range(duration):
+            agent.sense(light)
+            agent.think()
+            agent.move()
+            fitness += 1/(1 + agent.distance(light))    # 1 on top of the light, towards 0 far away
+
+    return fitness/(reps*duration)
 
 # Evolve
 ga = ea.Microbial(fitnessFunction, genesize, generations, popsize=popsize, recombProb=recombProb, mutatStd=mutatStd, demeSize=demeSize, eliteprop=eliteprop)
 ga.run()
-ga.showFitness()      
-
-# Obtain best final solution and create a neural network with it
 avgfit, bestfit, bestind = ga.fitStats()
-a = fnn.FNN(layers)
-a.setParams(bestind)
-
-# Function to visualize 
-def viz(neuralnet, dataset, label):
-    X = np.linspace(-1.05, 1.05, 100)
-    Y = np.linspace(-1.05, 1.05, 100)
-    output = np.zeros((100,100))
-    i = 0
-    for x in X: 
-        j = 0
-        for y in Y: 
-            output[i,j] = neuralnet.forward([x,y])[0,0]
-            j += 1
-        i += 1
-    plt.contourf(X,Y,output)
-    plt.colorbar()
-    plt.xlabel("x")
-    plt.ylabel("y")
-    for i in range(len(dataset)):
-        if label[i] == 1:
-            plt.plot(dataset[i][0],dataset[i][1],'wo')
-        else:
-            plt.plot(dataset[i][0],dataset[i][1],'wx')
-    plt.show()  
-
-# Visualize data
-viz(a, dataset, labels)
+print("Best fitness:",bestfit)
+np.save("best.npy",bestind)
+ga.showFitness()

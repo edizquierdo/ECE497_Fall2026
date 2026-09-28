@@ -2,15 +2,18 @@
 
 ## Overview
 
-In this project, you will combine the concepts from the previous projects:
-evolutionary algorithms and neural networks to evolve a controller for the
-Braitenberg vehicle's phototaxis (light-seeking) behavior.
+In this project you will put together the three pieces you have built so far: the **Braitenberg vehicle** from Project 1, the **evolutionary algorithm** from Project 2, and the **evolvable neural network** from Project 3.
 
-Instead of using hand-engineered sensor-motor wiring as in Project 1, we'll
-use an evolutionary algorithm to optimize the weights of a neural network
-controller. The network receives sensor readings as input and produces motor
-commands as output, and evolution finds the best weight configuration through
-selection and mutation.
+In Project 1 you designed the vehicle's "brain" by hand: two wires, crossed. Here, you will replace those wires with a small neural network, and let evolution find the network's weights. The network receives the two sensor readings as input and produces the two motor commands as output. Nobody tells it how to steer — the only thing evolution sees is how close to the light each vehicle ends up.
+
+The pipeline is the same one you used for XOR in Project 3 (flat genome of weights → EvoTorch genetic algorithm → best network). What changes is where fitness comes from. It is no longer a lookup in a truth table, but the result of letting a body with sensors and motors interact with its environment for a couple of thousand steps. That change has consequences you will get to explore: fitness becomes noisy, there is no known "perfect" score, and evolution finds strategies you would probably never have hand-designed.
+
+Your goal is not simply to run the code, but to understand what the evolved controllers are doing, how they compare to the one you designed yourself, and what the evolutionary process is (and isn't) telling you.
+
+## Checkpoints and Final Due Date
+
+- **Checkpoint — Friday, October 2, during class (2 PM).** Covers Required Parts 1 and 2. No reporting necessary for the checkpoint; it will involve running code on your laptop to demonstrate and showing figures.
+- **Final due date — Tuesday, October 6, before class (2 PM).** Includes Required Part 3 and the report. There will be demos during class.
 
 ---
 
@@ -18,55 +21,79 @@ selection and mutation.
 
 By completing this project, you will learn how to:
 
-- Combine neural networks with evolutionary algorithms (neuroevolution)
-- Encode a neural network's weights as a genome for evolutionary search
-- Apply neuroevolution to an embodied robot control problem
-- Compare neural controllers with hand-engineered Braitenberg controllers
-- Investigate how network architecture affects evolved behavior
+1. Apply neuroevolution to an embodied robot control problem, where fitness comes from behavior in a closed sensor–motor loop rather than from a fixed dataset.
+
+2. Reason about noisy fitness evaluations: why they arise, how they affect the numbers evolution reports, and how to measure an evolved controller's performance reliably.
+
+3. Compare an evolved controller against a hand-designed one on the same body and task, and identify the strategies each one uses.
+
+4. Design and run a systematic experiment on one aspect of the evolutionary or embodied setup, across multiple independent runs.
+
+---
+
+## IMPORTANT NOTE
+
+What follows below is ONE possible path for this project. However, you do NOT have to take this path. The required learning goals are fixed; the implementation and experiments are flexible. Take your own path. You are just as welcome to explore on your own, or to follow along.
+
+As in Project 3, this assignment has only three REQUIRED components, so that you have time to explore. The REQUIRED components are labeled clearly — everything else is OPTIONAL.
 
 ---
 
 ## Background
 
-### Neuroevolution
+### From XOR to a Body
 
-**Neuroevolution** is the application of evolutionary algorithms to optimize
-neural network weights. Instead of using gradient descent and backpropagation,
-the entire weight vector (the "genome") is treated as a solution to be evolved:
+In Project 3, evaluating a genome meant running four inputs through the network and counting correct signs. Here, evaluating a genome means:
 
-1. **Encode**: Flatten all network weights into a single real-valued vector
-2. **Evaluate**: Load genome into the network, run in environment, compute fitness
-3. **Evolve**: Apply selection, crossover, and mutation to produce next generation
+1. Load the genome into the network.
+2. Place a vehicle at a random spot 10 units away from the light, facing a random direction.
+3. Repeat **sense → think → move** for 2000 steps, with the network doing the "think".
+4. Score the episode by how close the vehicle stayed to the light.
+5. Repeat for a few episodes (`--episodes_per_eval`, default 5) and average.
 
-This approach works even when the objective has no usable gradient.
+The network never sees the fitness function, and the fitness function never looks inside the network. Everything evolution learns about steering, it learns through the body.
 
-### Braitenberg Vehicles Revisited
+### Fitness
 
-In Project 1, we used a simple crossed-wiring scheme:
-- Left sensor → Right motor
-- Right sensor → Left motor
+At each time step, the vehicle is rewarded for proximity to the light as `1 / (1 + d)`, where `d` is its distance to the light. Fitness is that reward averaged over all steps and all episodes. This is bounded in (0, 1], with higher always better, like in Project 3. But there are two important differences from XOR:
 
-This produces light-seeking behavior through direct sensorimotor connections.
-Now we replace this fixed wiring with a neural network that can learn more complex
-sensor-to-motor mappings.
+- **There is no reachable "perfect" score.** A vehicle would have to start on top of the light to score 1.0. Every vehicle starts 10 units away and needs time to get there, so the best achievable fitness is well below 1.0. This is why, unlike Project 3, `evolve.py` has no early stopping and every run uses all of its generations.
+- **Fitness is noisy.** Starting positions, headings, and motion noise are random, so evaluating the *same* genome twice gives two different numbers. The best fitness reported in a generation is partly a measure of how good that genome is, and partly a measure of how lucky it was. EvoTorch re-evaluates the surviving parents every generation, so a lucky genome does not stay on top forever — which also means that, unlike Project 3, the best fitness curve can go *down* from one generation to the next. After evolution, `evolve.py` re-evaluates the best genome on 100 new episodes (`--final_evals`) to give you a more trustworthy number.
+
+To give you a sense of scale, with the default settings: a vehicle that never moves scores about 0.09; the hand-wired crossed vehicle from Project 1 scores about 0.2; a typical evolved controller scores about 0.6.
 
 ### The Neural Vehicle
 
-The key change in this project is the `NeuralVehicle` class (defined in `braitenberg.py`), which extends the Project 1 `Vehicle` and swaps out its `think()` method. In the original `Vehicle`, `think()` implements the fixed crossed wiring described above — sensors connect directly to motors with no adjustable parameters. In `NeuralVehicle`, `think()` instead passes the two sensor readings through a `NeuralController` (see `neural_controller.py`) and uses its two outputs as the motor commands. Everything else about the vehicle — sensing, moving, accumulating noise — is unchanged; only the sensor-to-motor mapping itself is now a network whose weights evolution can shape, rather than a mapping you hand-designed.
+`NeuralVehicle` (in `braitenberg.py`) extends the Project 1 `Vehicle` and replaces only its `think()` method: the two sensor readings go through a `NeuralController` (in `neural_controller.py`) and its two outputs become the motor commands. Sensing, moving, and noise are inherited unchanged.
 
-**Note on motor output range:** The original crossed-wiring `Vehicle` sets motor commands directly from sensor readings, which are always in [0, 1] — so that vehicle can never drive backward. `NeuralVehicle`'s motors, by contrast, come out of the network's Tanh output layer and range over [-1, 1], so an evolved controller *can* learn to reverse or spin in place. With the same `turn_gain`, this also roughly doubles the vehicle's maximum turning rate compared to the crossed-wiring controller (since `left_motor - right_motor` can range over [-2, 2] instead of [-1, 1]). Keep this in mind when comparing turning behavior between the two controllers in Part 3 — a sharper turn doesn't necessarily mean a "smarter" controller, it may just reflect the wider motor range available to it.
+The `NeuralController` is the same network you used for XOR in Project 3, with two changes: it has 2 outputs (left and right motor) instead of 1, and its output layer goes through Tanh, so motor commands are bounded to [-1, 1].
+
+**Note on motor range:** The hand-wired `Vehicle` sets its motors directly from its sensors, which are always in (0, 1]. That means it can never drive backwards, and it can never stop — it is always moving. The `NeuralVehicle`'s motors range over [-1, 1], so an evolved controller *can* reverse, stop, spin in place, drive faster than the hand-wired vehicle usually does, and turn up to twice as sharply. Keep this in mind in Part 2: when the evolved controller does better, some of that may be a better strategy, and some may just be a wider range of available actions.
 
 #### Vehicle Configuration
-
-The `Vehicle` class has three key configurable parameters:
 
 | Parameter | Description |
 |-----------|-------------|
 | `angle_offset` | Angular separation between sensors (radians). π/2 places sensors at 90° on each side. |
-| `turn_gain` | How strongly sensor difference steers the vehicle. Larger values produce sharper turns. |
+| `turn_gain` | How strongly the motor difference steers the vehicle. Larger values produce sharper turns. |
 | `noise_stdev` | Standard deviation of Gaussian noise added to orientation at each step. |
 
-These parameters are passed as command-line arguments to both `sim.py` and `evolve.py`.
+These are passed as command-line arguments (`--angle_offset`, `--turn_gain`, `--noise`) to both `sim.py` and `evolve.py`.
+
+### What Changed from Project 1
+
+The vehicle is the same, but the environment is set up differently:
+
+| | Project 1 | Project 4 |
+|---|---|---|
+| Light position | `(distance, 0)` | origin `(0, 0)` |
+| Starting position | origin, same every repetition | random point on a circle of radius `distance` around the light |
+| Starting heading | facing the light, same every repetition | random |
+| Steps per episode | 5000 | 2000 |
+
+The random starts are deliberate. If every evaluation started from the same position and heading, evolution could "solve" phototaxis by memorizing one good path, rather than learning to steer toward the light from wherever it happens to be.
+
+**Note on sensor labels.** In Project 1's `braitenberg.py`, the left and right labels were mixed up in two places. The sensor called "right" was actually mounted on the vehicle's *left* (angles are measured counterclockwise, so `orientation + angle_offset` is to the left of the heading), and the turning equation was mirrored the same way (a faster *left* wheel turned the vehicle left). The two mistakes cancel out, so every behavior you saw in Project 1 was correct — the crossed vehicle really did seek the light — but the names were backwards. This project fixes both: the left sensor is on the left, and a faster left wheel turns the vehicle right, as with a real differential-drive robot. `move()` now uses `turn_gain × (right_motor − left_motor)`. If you bring code over from Project 1, keep this in mind.
 
 ---
 
@@ -74,12 +101,12 @@ These parameters are passed as command-line arguments to both `sim.py` and `evol
 
 | File | Purpose |
 |------|---------|
-| `neural_controller.py` | Defines the neural network controller (2→hidden→2) |
-| `braitenberg.py` | Core vehicle classes including shared `NeuralVehicle` |
-| `evolve.py` | Core neuroevolution using EvoTorch |
-| `sim.py` | Run simulations with evolved controllers |
+| `neural_controller.py` | The neural network controller (2 sensors → hidden → 2 motors), plus `genome_size()` and a batched forward pass. |
+| `braitenberg.py` | The Project 1 `Vehicle` (with both wirings), `NeuralVehicle`, `Light`, and `simulate_population()` — a batched version of the sense → think → move loop used during evolution. |
+| `evolve.py` | Defines the fitness function and runs neuroevolution with EvoTorch. |
+| `sim.py` | Simulates an evolved controller, or a hand-wired one, and plots its behavior. |
 | `requirements.txt` | Pinned dependency versions for this project's virtual environment. |
-| `README.md` | This documentation |
+| `README.md` | Project documentation. |
 
 ---
 
@@ -87,7 +114,7 @@ These parameters are passed as command-line arguments to both `sim.py` and `evol
 
 The project requires:
 
-- Python 3.7 or newer
+- Python 3.8 or newer
 - NumPy
 - Matplotlib
 - PyTorch
@@ -133,155 +160,125 @@ If you'd rather use `conda`, that's fine too — just create an environment with
 
 ---
 
-## Running Neuroevolution
+## Running the Neuroevolution
 
-### Simulation Setup
-
-The evolution and simulation environment uses the following configuration:
-
-- **Light source**: Always positioned at the origin (0, 0)
-- **Agent starting position**: At the specified `distance` from the light, but with a random angle and orientation for each episode
-- **Fitness evaluation**: The agent's neural controller is evaluated over multiple episodes with different random initial conditions
-
-This setup ensures that evolved controllers learn to seek light regardless of starting position and orientation.
-
-To evolve a neural network controller with default parameters:
+To run the default neuroevolution experiment and save the best controller,
 
 ```bash
-python evolve.py
+python evolve.py --verbose --vizperf --output best_genome.npy
 ```
 
-Useful command-line options:
+A default run takes about a minute on a recent laptop. At the end, it prints two numbers: the best fitness in the final generation (from only 5 episodes, and usually a little lucky), and that same genome's fitness re-evaluated on 100 new episodes. **Use the re-evaluated number when you report how good a controller is.**
+
+Useful command-line options include:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--hidden` | Number of hidden neurons | `8` |
-| `--hidden_sizes` | List of hidden layer sizes for a multi-layer network, e.g. `--hidden_sizes 16 16` for two 16-neuron hidden layers. Overrides `--hidden` when given. See the Part 1 optional architecture challenge. | `None` (use `--hidden`) |
-| `--activation` | Activation function on the hidden layer(s): `tanh`, `relu`, or `sigmoid`. The output layer always uses Tanh regardless, so motor commands stay bounded to `[-1, 1]`. See the Part 1 optional architecture challenge. | `tanh` |
+| `--hidden` | Number of hidden neurons in a single hidden layer | `8` |
+| `--hidden_sizes N [N ...]` | List of hidden-layer sizes, e.g. `--hidden_sizes 16 16`. Overrides `--hidden` when given. Pass `--hidden_sizes` with no numbers for a network with no hidden layer at all | `None` |
+| `--activation` | Hidden layer activation (`tanh`, `sigmoid`, or `relu`). The output layer is always Tanh | `tanh` |
 | `--popsize` | Population size | `50` |
 | `--gens` | Number of generations | `100` |
-| `--mut_stdev` | Mutation strength | `0.5` |
+| `--mut_stdev` | Gaussian mutation standard deviation | `0.5` |
 | `--tournament_size` | Tournament size for SBX crossover | `3` |
 | `--eta` | Distribution index for SBX crossover | `20` |
 | `--no-crossover` | Disable SBX crossover, running a mutation-only GA | crossover on |
-| `--init_bounds LOW HIGH` | Initial genome sampling bounds | `-1.0 1.0` |
 | `--no-elitism` | Disable elitism | elitism on |
-| `--vizperf` | Visualize fitness over generations | off |
-| `--verbose` | Print progress to console | off |
-| `--seed` | Random seed for reproducibility | `None` |
-| `--distance` | Distance to light source | `10.0` |
+| `--init_bounds LOW HIGH` | Initial genome sampling bounds | `-1.0 1.0` |
+| `--episodes_per_eval` | Episodes (random starts) averaged per fitness evaluation | `5` |
+| `--duration` | Simulation steps per episode | `2000` |
+| `--distance` | Starting distance from the light | `10.0` |
 | `--angle_offset` | Angular separation between sensors (radians) | `pi/2` |
 | `--turn_gain` | Turn gain for steering | `0.1` |
 | `--noise` | Motion noise standard deviation | `0.1` |
-| `--duration` | Number of simulation steps per episode | `500` |
-| `--output` | File path to save the best evolved genome, e.g. `best_genome.npy` | `None` |
-| `--fitness_output FILE` | Save per-generation best/avg/worst fitness to this `.npz` file (keys `best`/`avg`/`worst`), so you can reload and compare fitness curves across configurations without re-running evolution | `None` |
-| `--seed_genome FILE` | Seed the initial population around a genome saved by a previous `--output` run (must match the current `--hidden`/`--hidden_sizes`) instead of starting from scratch — one exact copy plus the rest perturbed by `--seed_noise` | `None` |
-| `--seed_noise` | Stdev of the Gaussian perturbation applied to `--seed_genome` copies | `0.05` |
-| `--episodes_per_eval` | Number of episodes to average per fitness evaluation | `5` |
+| `--final_evals` | Episodes used to re-evaluate the best genome after evolution | `100` |
+| `--vizperf` | Plot fitness over generations | `False` |
+| `--verbose` | Print per-generation statistics to the console | `False` |
+| `--seed` | Random seed for reproducibility | `None` |
+| `--output FILE` | Save the best evolved genome, e.g. `best_genome.npy` | `None` |
+| `--fitness_output FILE` | Save per-generation best/avg/worst fitness to this `.npz` file (keys `best`/`avg`/`worst`), so you can reload and compare fitness curves later without re-running evolution | `None` |
+| `--seed_genome FILE` | Seed the initial population around a genome saved by a previous `--output` run (must match `--hidden`/`--hidden_sizes`) | `None` |
+| `--seed_noise` | Stdev of the perturbation applied to `--seed_genome` copies | `0.05` |
 
-For example:
-
-```bash
-python evolve.py --hidden 16 --popsize 100 --gens 200 --vizperf --distance 15.0
-```
-
-To run with non-default vehicle parameters:
+For example,
 
 ```bash
-python evolve.py --angle_offset 1.0 --turn_gain 0.2 --noise 0.1
+python evolve.py --hidden 16 --popsize 100 --gens 200 --vizperf
+python evolve.py --episodes_per_eval 1 --verbose
+python evolve.py --noise 0.3 --output noisy_genome.npy
 ```
-
-To compare crossover on vs. off, or a wider initial weight range:
-
-```bash
-python evolve.py --no-crossover --vizperf
-python evolve.py --init_bounds -3.0 3.0 --vizperf
-```
-
-**Note on the distance parameter:** The `--distance` argument specifies how far from the origin (where the light is) the agent starts, not the light's position. The light is always at (0, 0), and agents start at a random angle around this circle.
 
 ---
 
 ## Running Simulations
 
-After evolution, you can simulate the best evolved controller:
+`sim.py` lets you watch a controller drive. It can run either an evolved network or the hand-wired Project 1 vehicle:
 
 ```bash
-python sim.py
+python sim.py --genome best_genome.npy --viztraces --vizdist --scores
+python sim.py --controller crossed --viztraces --vizdist --scores
 ```
 
-To use a saved genome from evolution:
+When you give both commands the same `--seed`, the two controllers get exactly the same starting positions, headings, and motion noise, so you can compare their trajectories side by side:
 
 ```bash
-# First, save the genome during evolution:
-python evolve.py --output best_genome.npy
-
-# Then simulate with the evolved controller:
-python sim.py --genome best_genome.npy --viztraces
+python sim.py --genome best_genome.npy --seed 7 --reps 20 --viztraces --scores
+python sim.py --controller crossed      --seed 7 --reps 20 --viztraces --scores
 ```
 
-To simulate with the same vehicle configuration as evolution, pass matching arguments:
+The fitness `sim.py` prints (`--scores`) is the same measure `evolve.py` uses, so the numbers are directly comparable.
 
-```bash
-python sim.py --genome best_genome.npy --viztraces --angle_offset 1.57 --turn_gain 0.1 --noise 0.1
-```
-
-By default, both scripts use `angle_offset=pi/2`, `turn_gain=0.1`, and `noise_stdev=0.1`.
-
-Useful command-line options for `sim.py`:
+Useful command-line options include:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--genome` | Path to a saved `.npy` genome file; if omitted, uses a randomly initialized (untrained) controller | `None` |
-| `--duration` | Number of simulation steps (should match the `--duration` used during evolution) | `500` |
-| `--reps` | Number of independent repetitions to average over | `5` |
-| `--distance` | Distance to light source | `10.0` |
-| `--hidden` | Number of hidden neurons; must match the network used during evolution | `8` |
-| `--hidden_sizes` | List of hidden layer sizes, e.g. `--hidden_sizes 16 16`. Overrides `--hidden` when given. Must match the architecture the genome was evolved with. | `None` (use `--hidden`) |
-| `--activation` | Activation function on the hidden layer(s): `tanh`, `relu`, or `sigmoid`. Must match what the genome was evolved with. | `tanh` |
+| `--controller` | `neural` (evolved network), or the hand-wired `crossed` or `direct` wiring from Project 1 | `neural` |
+| `--genome` | Path to a `.npy` genome from `evolve.py --output`. If omitted with `--controller neural`, a random, unevolved network is used | `None` |
+| `--hidden` / `--hidden_sizes` / `--activation` | Network architecture — must match what the genome was evolved with | `8` / `None` / `tanh` |
+| `--duration` | Number of simulation steps | `2000` |
+| `--reps` | Number of independent repetitions | `5` |
+| `--distance` | Starting distance from the light | `10.0` |
 | `--angle_offset` | Angular separation between sensors (radians) | `pi/2` |
 | `--turn_gain` | Turn gain for steering | `0.1` |
 | `--noise` | Motion noise standard deviation | `0.1` |
-| `--viztraces` | Plot vehicle trajectories in the x-y plane | off |
-| `--vizdist` | Plot average distance to light over time | off |
-| `--scores` | Print the average fitness achieved per repetition | off |
+| `--viztraces` | Plot vehicle trajectories | off |
+| `--vizdist` | Plot distance to the light over time (mean ± 1 std across reps) | off |
+| `--scores` | Print the average fitness | off |
 | `--seed` | Random seed for reproducibility | `None` |
+| `--save DIR` | Save figures (PNG) and the recorded distances (`distances.npy`, shape `reps × duration`) to `DIR` instead of opening windows | off |
 
-**Important:** `--hidden`, `--angle_offset`, `--turn_gain`, `--noise`, and `--distance` must match the values used when the genome was evolved — a genome evolved with one network size or vehicle configuration will not load correctly into a differently-shaped network, and will behave unpredictably in a mismatched environment.
+**Important:** the network architecture must match what the genome was evolved with, or it won't load. The vehicle settings (`--angle_offset`, `--turn_gain`, `--noise`, `--distance`, `--duration`) don't *have* to match — but a controller tested in a different environment than the one it evolved in may behave very differently. (That can be an interesting experiment in itself.)
 
 ---
 
-## Parameter Studies
+## Performing Parameter Studies
 
-There's no `study.py` in this project (unlike Projects 1–3) — Part 2 of
-the assignment asks you to compare hidden-layer sizes, and running the
-sweep and plotting the result is left as an exercise.
+There's no `study.py` in this project. In Project 3, `study.py` was a worked example of the pattern: sweep one parameter, repeat several times per value to average out randomness, save the results, and plot the mean ± std. From here on, you are expected to write that kind of script yourself. Project 3's `study.py` is a good starting point to adapt: `run_neuroevolution()` in this project's `evolve.py` has the same name and a very similar signature.
 
-The quickest way to do this without writing a full sweep script: run
-`evolve.py` once per hidden size with `--fitness_output` to save each
-run's fitness-over-generations curve, then reload and plot them together.
+For a quick comparison without a full script, save each run's fitness curve with `--fitness_output`, then reload and plot them together:
 
 ```bash
-python evolve.py --hidden 4 --fitness_output hidden4.npz
-python evolve.py --hidden 8 --fitness_output hidden8.npz
-python evolve.py --hidden 16 --fitness_output hidden16.npz
-python evolve.py --hidden 32 --fitness_output hidden32.npz
+python evolve.py --hidden 2 --seed 1 --fitness_output hidden2_s1.npz
+python evolve.py --hidden 8 --seed 1 --fitness_output hidden8_s1.npz
 ```
 
 ```python
 import numpy as np
 import matplotlib.pyplot as plt
 
-for label, path in [("hidden=4", "hidden4.npz"), ("hidden=8", "hidden8.npz"),
-                     ("hidden=16", "hidden16.npz"), ("hidden=32", "hidden32.npz")]:
-    data = np.load(path)
-    plt.plot(data["best"], label=label)
+for label, path in [("hidden=2", "hidden2_s1.npz"), ("hidden=8", "hidden8_s1.npz")]:
+    plt.plot(np.load(path)["best"], label=label)
 plt.xlabel("Generation")
 plt.ylabel("Best fitness")
 plt.legend()
 plt.show()
 ```
+
+When you compare evolved controllers, remember that the best fitness *during* evolution is noisy. For a fair comparison, re-evaluate each final genome with `evaluate_genome()` from `evolve.py` (that is what `evolve.py` prints at the end), or with `sim.py --scores --reps 50`.
+
+### IMPORTANT REMINDER
+
+When you are doing a parameter sweep, remember to run it first with a small number of repetitions: 3–5 seeds per value or so. That way you can get an idea of the general shape. But remember that the shape will be very noisy. That noise is likely NOT REAL. Then, give yourself some time to repeat the same experiment with more repetitions — 10 or more if you can. A default run takes about a minute, so a sweep of 5 values × 10 seeds is under an hour. Let your laptop sit and work on it!
 
 ---
 
@@ -289,128 +286,112 @@ plt.show()
 
 ### Neural Controller (`neural_controller.py`)
 
-The `NeuralController` class defines a feedforward network:
-- **Input layer**: 2 neurons (left and right sensor readings)
-- **Hidden layer**: configurable number of neurons with Tanh activation
-- **Output layer**: 2 neurons (left and right motor commands), also passed through Tanh so motor commands are bounded to [-1, 1]
+`NeuralController` is a feedforward network:
 
-The genome is a flat vector containing all weights and biases in PyTorch's
-parameter order.
+```
+Input (2 sensors)  →  Linear(2, hidden)  →  Tanh  →  Linear(hidden, 2)  →  Tanh  →  Output (2 motors)
+```
+
+The genome is a flat vector of all weights and biases, in PyTorch's parameter order (`W1`, `b1`, `W2`, `b2`) — the same layout as in Project 3. `genome_size(hidden=...)` computes the genome length directly from the architecture.
+
+`batched_forward()` runs the whole population's networks at once, using the same trick as Project 3's `make_fitness_fn`: it slices each individual's weight matrices out of the batch of genomes and applies them with one batched matrix multiplication per layer.
+
+### Vehicles and Simulation (`braitenberg.py`)
+
+`Vehicle`, `NeuralVehicle`, and `Light` simulate one vehicle at a time, with the same `sense()` → `think()` → `move()` methods as in Project 1. `sim.py` uses these.
+
+`simulate_population()` is the same physics, written with tensors so that every vehicle of every individual in a generation advances together in one step. `evolve.py` uses it; without it, a single evolution run would take about 30 times longer. If you change the physics (for example, add sensor noise or a second light), make the same change in both places — `Vehicle` so that `sim.py` shows it, and `simulate_population()` so that evolution sees it.
 
 ### Evolution (`evolve.py`)
 
-The `run_evolution()` function:
-1. Creates a fitness function that evaluates the controller in simulation, averaging bounded proximity reward over `--episodes_per_eval` episodes with randomized starting angle and orientation
-2. Sets up EvoTorch's GeneticAlgorithm with SBX crossover and Gaussian mutation
-3. Runs for the specified number of generations, stopping early if fitness reaches near-perfect (≥ 0.99)
-4. Returns fitness trajectories and the best genome
-
-### Simulation (`sim.py`)
-
-The `NeuralVehicle` class (defined in `braitenberg.py`) extends the Braitenberg `Vehicle`:
-- Uses a neural network instead of direct sensor-motor wiring
-- Applies noise to orientation during movement
+- `make_fitness_fn()` returns the fitness function: it simulates each individual for `--episodes_per_eval` episodes and computes the average proximity reward. The reward is computed from the distances returned by `simulate_population()` in one clearly marked line — this is the place to change if you want a different fitness function.
+- `run_neuroevolution()` sets up EvoTorch's `GeneticAlgorithm` with SBX crossover and Gaussian mutation, runs it for `--gens` generations, and returns the fitness curves and the best genome.
+- `evaluate_genome()` re-evaluates one genome on many new episodes.
 
 ---
 
 ## Tips
 
-- Start with small populations (25-50) and fewer generations (50-100) to test
-  your setup before running large experiments
-- **Before running each experiment, write down your prediction for the
-  result.** It's easy to only notice the results that confirm what you
-  already expected; a written prediction makes the genuinely surprising
-  results — which are usually the most interesting ones to discuss in your
-  report — much easier to spot.
-- Use `--seed` for reproducibility when debugging
-- Visualize fitness curves (`--vizperf`) to monitor evolutionary progress
-- Compare with the Braitenberg controller from Project 1 as a baseline
-
-**Note on Fitness:** At each timestep, the fitness function rewards proximity to the light as `1 / (1 + distance)`, averaged over the episode and over `--episodes_per_eval` repetitions. This bounds fitness in (0.0, 1.0]: a vehicle sitting on top of the light the whole episode scores 1.0, and fitness approaches 0.0 as the vehicle stays far from the light. Higher fitness always means better performance.
+- Start by running the default configuration before changing any parameters, then watch the result:
+  ```bash
+  python evolve.py --verbose --vizperf --output best_genome.npy
+  python sim.py --genome best_genome.npy --viztraces --vizdist --scores
+  ```
+- Read the source code carefully before making modifications.
+- **Before running each experiment, write down your prediction for the result.** A written prediction makes the genuinely surprising results — usually the most interesting ones to discuss — much easier to spot.
+- Use `--seed` for reproducibility when debugging.
+- Change one parameter at a time to isolate its effect.
+- Always look at the trajectories (`sim.py --viztraces`), not just the fitness number. Two controllers with similar fitness can behave very differently.
 
 ---
 
 ## Assignment
 
-### Part 1 – Understand the Neural Controller
+### REQUIRED #1: Understand the Neural Controller and the Embodied Fitness
 
-Answer these questions before running any experiments:
+Read `neural_controller.py`, `braitenberg.py`, and `evolve.py`, and answer the following questions before running any experiments:
 
-- How many total parameters (weights + biases) does a network with 8 hidden
-  neurons have? Count them by layer.
-- `neural_controller.py` applies Tanh after *both* the hidden layer and the
-  output layer. These two uses of Tanh serve different purposes — what is
-  each one doing? (Hint: one is about giving the network the ability to
-  represent nonlinear functions at all; the other is about constraining the
-  physical range of a motor command. Which is which?)
-- What would happen if we used ReLU instead of Tanh in the hidden layer?
+- How many total parameters (weights and biases) does a network with 8 hidden neurons have? Count them by layer. Then check your count against `genome_size(hidden=8)`.
+- `neural_controller.py` applies Tanh after *both* the hidden layer and the output layer. These two uses of Tanh serve different purposes — what is each one doing? (Hint: one is about being able to represent nonlinear functions at all; the other is about the physical range of a motor command.)
+- What fitness would a vehicle get if it never moved at all? Roughly what fitness would a vehicle get if it drove straight to the light at top speed and stopped there? (The top speed is `vel_gain × 1 = 1/50` units per step.) What does this tell you about the range of fitness values you should expect to see, and why `evolve.py` has no early stopping?
+- In Project 3, "converged" meant reaching fitness 1.0. How would you define convergence for this task?
+- Why does fitness average over several episodes with random starting positions and headings? What do you think would happen with `--episodes_per_eval 1`?
 
-**Optional / Advanced Challenge:** The provided `NeuralController` (in `neural_controller.py`) defaults to a single hidden layer, `2 → hidden → 2`, with Tanh activations throughout — but its constructor also accepts an optional `hidden_sizes` (a list, e.g. `[16, 16]`, for multi-layer networks) and `activation` (e.g. `nn.ReLU`, `nn.Sigmoid`) parameter, and `evolve.py`/`sim.py` expose these as `--hidden_sizes`/`--activation` CLI flags, so you don't need to touch `neural_controller.py` yourself to try the experiments below — though you're welcome to read (or modify) how it builds the layer stack if you want to understand the mechanism, not just use it:
-- **Depth**: try `--hidden_sizes 16 16` (a second hidden layer) and compare against a single-layer network of *similar total parameter count*. Watch out: matching neuron count is **not** the same as matching parameter count. For example, a single hidden layer of 32 neurons has `2×32 + 32 + 32×2 + 2 = 162` parameters, while two hidden layers of 16 neurons each have `2×16 + 16 + 16×16 + 16 + 16×2 + 2 = 354` parameters — the hidden-to-hidden connection alone (`16×16 = 256` weights) more than doubles the total. If you want a genuinely parameter-matched single-layer comparison against `16,16`, you'd need roughly `--hidden 70` (352 parameters), not `--hidden 32`. Does the deeper network evolve as easily as a neuron-matched single layer, a parameter-matched single layer, both, or neither (deeper genomes can be harder for a genetic algorithm to search)?
-- **Activation function**: try `--activation relu` or `--activation sigmoid` (the output layer stays Tanh regardless, so motor commands stay bounded to [-1, 1]). How does the choice of hidden activation affect the smoothness of evolved trajectories or the final fitness reached?
+Then run the default configuration, and watch the result:
 
-If you implement your own version instead of using the built-in flags, you don't need to change anything outside `neural_controller.py` — `evolve.py` computes genome length via `genome_size()` (also in `neural_controller.py`), which derives it analytically from whatever architecture `NeuralController` defines, so a modified network will evolve and load correctly as-is.
+```bash
+python evolve.py --verbose --vizperf --output best_genome.npy
+python sim.py --genome best_genome.npy --viztraces --vizdist --scores
+```
 
-### Part 2 – Evolve and Analyze
+Compare the best fitness reported during evolution with the re-evaluated fitness printed at the end. Which one is higher, and why? Does the best fitness curve ever go down? Why is that possible here, when it wasn't in Project 3?
 
-Evolve controllers with different hidden sizes:
+#### OPTIONAL: Watch an unevolved network
 
-1. Run evolution with 4, 8, 16, and 32 hidden neurons
-2. Compare final fitness values across architectures
-3. How does genome size affect evolutionary dynamics?
-
-Questions to consider:
-- Does a larger network always achieve higher fitness?
-- Is there diminishing returns beyond a certain size?
-- What is the relationship between parameter count and convergence speed?
-
-**Optional / Advanced Challenge:** In Project 1, you designed your own fitness function for the Braitenberg vehicle, measuring something other than raw distance to the light. Bring that fitness function back here: reimplement it as an alternative to `make_fitness_fn()`'s `1 / (1 + distance)` reward (swap out the line inside the `fitness_fn` closure, or write a second version of `make_fitness_fn`), and run evolution with it under otherwise matched settings (same hidden size, popsize, generations, seed). Then compare the two fitness functions on their evolvability, not just their final scores:
-- Does your fitness function converge faster, slower, or about as fast as the distance-based one?
-- Does it produce a higher success rate across repeated runs (see Part 4), or is it noisier/more prone to getting stuck?
-- Do the two fitness functions lead to visibly different strategies when you look at trajectories (Part 3)? A controller can score well on one fitness measure while behaving quite differently under another.
-
-### Part 3 – Behavioral Comparison
-
-Compare neural controllers with Braitenberg controllers:
-
-1. Run simulations with evolved neural controllers using `sim.py`.
-2. **Write your own small script (or adapt a copy of `sim.py`) to simulate the original crossed-wiring `Vehicle` from Project 1** under the same starting conditions (same `distance`, `angle_offset`, `turn_gain`, `noise_stdev`, and random seed) and log its trajectory the same way. There is no `--baseline` option provided in this project's code — `sim.py` only drives `NeuralVehicle`, so producing the comparison trajectories is part of the exercise. This should only take a few lines: instantiate a `Vehicle` instead of a `NeuralVehicle` (no controller needed, since `Vehicle.think()` already implements the crossed wiring), and reuse the same sensing/thinking/moving loop.
-3. Compare trajectories between the two controllers.
-4. Analyze differences in path smoothness, speed, and directness.
-
-Questions:
-- Do neural controllers follow similar paths to Braitenberg vehicles?
-- Are there noticeable differences in turning behavior?
-- Can you identify any "strategies" employed by evolved networks?
-
-### Part 4 – Quantitative Analysis
-
-Collect data from multiple independent runs:
-
-1. Run evolution with the same parameters (same hidden size, popsize, gens, etc. — only the `--seed` should differ) 10 times.
-2. Record best fitness and convergence generation for each run. **Define what "convergence generation" means for your own analysis and state that definition in your report** — this project doesn't define it for you. One reasonable choice: the earliest generation at which a run's best-fitness curve first reaches some fraction (e.g. 95%) of that same run's own final best fitness; any clearly-stated definition is fine. Also record genome size once for this part — since Part 4 holds architecture fixed and only varies `--seed`, genome size will be identical across all 10 runs (it's Part 2's hidden-size sweep where genome size actually varies run to run).
-3. Analyze variance across runs
-
-Questions:
-- Does evolution always find high-fitness solutions?
-- How does population size affect success rate?
-- What is the typical convergence pattern (early rapid progress vs. late refinement)?
+Run `sim.py` without `--genome` to see what a random network does, and compare its fitness against your answer above for a vehicle that never moves.
 
 ---
 
-## Optional / Advanced Challenge
+### REQUIRED #2: Evolved vs. Hand-Designed, Head to Head
 
-Parts 1–4 are required (Parts 1 and 2 already offer smaller optional callouts of their own). Beyond that, pick **one** of the following four directions to investigate further. Each is open-ended — there's no single right answer, and the point is to form a hypothesis, run the experiment, and report what you found. Only attempt one; go as deep as you like on it.
+This is the heart of the project: the same body, the same task, two very different design processes.
 
-**1. Multiple light sources.** Evolve under two light sources (positions randomized each episode) instead of one, modifying `make_fitness_fn`'s episode setup and reward to account for both. Hypothesis: does the evolved network learn a genuinely different strategy than the hand-wired crossed vehicle could ever produce — which can only track one simple gradient at a time — or does it just learn to pick one light and ignore the other?
+1. Evolve controllers with at least 5 different seeds (all other settings the same), saving each genome with `--output`. Record each one's re-evaluated fitness.
+2. Simulate the hand-wired crossed vehicle with `sim.py --controller crossed --scores --reps 50`, and compare its fitness against the distribution of your evolved controllers.
+3. Pick at least one evolved controller and compare its trajectories and distance-over-time plots against the crossed vehicle's, **using the same `--seed`** so both start from identical conditions.
 
-**2. Sensor noise and robustness comparison.** Evolve with corrupted sensor readings (add noise directly to `left_sensor`/`right_sensor` inside `sense()`, separate from the vehicle's existing orientation noise) and compare the evolved controller's robustness against the hand-wired crossed-wiring `Vehicle`'s, tested under the same corruption. Hypothesis: does the evolved network learn some implicit filtering that the fixed wiring structurally cannot?
+Questions to consider:
 
-**3. Evolve the hand-wired controller's own parameters.** Instead of evolving a full neural network, evolve just a couple of scalar parameters the crossed-wiring scheme itself could use (e.g., a per-sensor gain applied before crossing) — a 2-parameter genome instead of the full network's dozens of weights. Compare its evolved performance against the full `NeuralController`. Hypothesis: how much of the neural controller's apparent advantage over Project 1's hand-wiring comes from having many more free parameters to tune, versus genuinely more expressive structure? **Careful — for this comparison to actually isolate "parameter count" as the variable, the two controllers need comparable motor-output ranges.** `NeuralController`'s output layer is deliberately Tanh-bounded to `[-1, 1]`, but a raw `gain × sensor` motor command has no such bound — evolution can simply drive the gain magnitude arbitrarily high to make the vehicle move faster, which raises this proximity-based fitness without any smarter steering. If your gain-only controller wins by a wide margin, check whether it's actually moving faster (e.g. log `velocity` — the theoretical max for a Tanh-bounded controller is `vel_gain × 1`), and consider clipping or squashing your gain-scaled motor outputs to the same `[-1, 1]` range before concluding anything about parameter count vs. expressiveness.
+- Does evolution reliably find a controller better than the hand-designed one? How much do the 5 runs vary?
+- Do evolved controllers follow paths similar to the crossed vehicle? What "strategies" can you identify — e.g., driving backwards, stopping at the light, turning sharply at the start? Do different seeds find different strategies?
+- What happens when each vehicle reaches the light?
+- How much of the evolved controller's advantage comes from a smarter strategy, and how much from having a wider motor range (see *Note on motor range* above)? How could you design a comparison that separates the two?
 
-**4. Co-evolve sensor placement.** Evolve `angle_offset` (currently fixed at π/2) alongside the network's weights, instead of holding it fixed for the whole population. Hypothesis: does evolution discover a different sensor placement that performs better than the one you were given — and if so, does that placement still make behavioral sense (e.g., still roughly symmetric left-right)?
+---
 
-You're encouraged to explore your own idea beyond these four as well, as long as it's a genuine extension (not just one of the smaller optional callouts Part 1 or Part 2 already cover, and not just a parameter change already covered elsewhere).
+### REQUIRED #3: Pick ONE aspect to explore in depth
+
+For the last part, pick **one** of the directions below, or come up with your own. Whatever you pick, formulate the question you are trying to answer explicitly, write down your prediction, and run enough independent seeds to trust the answer. Each of these is open-ended — there's no single right answer.
+
+**A. Sweep one parameter systematically.** Vary one thing, holding everything else fixed, and measure its effect on the re-evaluated fitness of the evolved controllers (mean ± std across seeds). Some candidates:
+
+- `--episodes_per_eval`: how does the number of evaluation episodes affect the quality of the controller evolution finds? Is there a trade-off with runtime?
+- `--noise`: are controllers evolved with more motion noise more robust? What happens when you test a controller in a noise level different from the one it evolved in?
+- `--hidden`: does a bigger network evolve a better controller for this task? (Compare with what you found for XOR in Project 3.) Could a network with *no* hidden layer (`--hidden_sizes` with no numbers) do the job?
+- `--distance` or `--duration`: does a controller evolved at one distance still work at another?
+- An evolutionary-algorithm parameter (`--popsize`, `--mut_stdev`, `--no-crossover`, ...), as in Projects 2 and 3.
+
+**B. Bring back your Project 1 fitness function.** In Project 1 you designed your own fitness function for this vehicle. Reimplement it in `make_fitness_fn()` (the reward line near the end of `fitness_fn`, which has access to the full `(pop, episodes, duration)` array of distances) and evolve with it. Do the two fitness functions lead to visibly different strategies? Does one converge faster or more reliably? A controller can score well on one fitness measure while behaving quite differently under another — evaluate each evolved controller under *both* fitness functions.
+
+**C. Sensor noise and robustness.** Add noise to the sensor readings (in `Vehicle.sense()` and in the sense block of `simulate_population()`), separately from the existing motion noise. Evolve with it, and compare the evolved controller's robustness against the crossed vehicle's under the same corruption. Does the evolved network learn some implicit filtering that the fixed wiring cannot?
+
+**D. Evolve the hand-wired controller's own parameters.** Instead of evolving a full network, evolve just the few parameters a crossed-wiring vehicle could use (e.g., a gain on each sensor-to-motor connection, plus maybe a bias) — a genome of 2–4 numbers instead of 42. You'll need a different `think` function inside `make_fitness_fn()`. Compare its performance against the full `NeuralController`. How much of the neural controller's advantage comes from having many more parameters, versus more expressive structure? **Careful:** make sure both controllers have comparable motor ranges (e.g., clip or Tanh-squash the gain-scaled motor commands to [-1, 1]); otherwise evolution can win simply by driving the gains up to go faster.
+
+**E. Co-evolve sensor placement.** Add `angle_offset` as an extra gene, evolved alongside the network's weights, instead of holding it fixed at π/2. Does evolution discover a better sensor placement? Does it still make behavioral sense?
+
+**F. Two light sources.** Add a second light (positions randomized each episode) and a reward that accounts for both. Does the evolved network learn a strategy the crossed vehicle could never produce, or does it just pick one light and ignore the other?
+
+You're encouraged to explore your own idea beyond these, as long as it's a genuine extension.
 
 ---
 
@@ -433,31 +414,24 @@ The first page of your report should include:
 
 Organize the body of your report into one section per assignment part. Each section should combine the relevant figures with a written discussion — a plot with no interpretation, or an interpretation with no supporting plot, is incomplete.
 
-**Part 1 — Understand the Neural Controller**
+In what follows, I am going to mention the traditional path of required components. However, keep in mind that if you chose to meet the learning objectives in a different way, then your required parts might look different.
 
-- Your answers to the conceptual questions posed in Part 1 (parameter count for 8 hidden neurons by layer, what the hidden-layer and output-layer uses of Tanh are each doing and why they're different despite being the same function, and what would change if ReLU replaced Tanh in the hidden layer).
-- *(Optional)* If you attempted the Part 1 advanced architecture challenge (extra layers and/or alternate activation functions), briefly describe what you changed and how it affected evolvability.
+**Required Part 1 — Understand the Neural Controller and the Embodied Fitness**
 
-**Part 2 — Evolve and Analyze**
+- Your answers to the conceptual questions posed in Part 1 (parameter count, the two uses of Tanh, the expected range of fitness values and why there is no early stopping, your definition of convergence, and why fitness averages over random episodes).
+- The fitness-over-generations plot (`--vizperf`) and trajectory plot (`--viztraces`) from a default run, with a brief caption, and your explanation of the difference between the best fitness during evolution and the re-evaluated fitness.
 
-- Fitness-over-generations plots (`--vizperf`) for hidden sizes 4, 8, 16, and 32, run with matched settings otherwise.
-- A summary plot or table comparing final best fitness across the four architectures.
-- Answers to the guiding questions from Part 2, supported directly by your results (does a larger network always win, is there a point of diminishing returns, how does genome size relate to convergence speed).
-- *(Optional)* If you attempted the Part 2 custom fitness function challenge, describe the fitness function from Project 1 you brought back, and compare its evolvability against the provided distance-based fitness (convergence speed, success rate, resulting strategies).
+**Required Part 2 — Evolved vs. Hand-Designed**
 
-**Part 3 — Behavioral Comparison**
+- The re-evaluated fitness of your evolved controllers (at least 5 seeds) alongside the crossed vehicle's fitness, as a plot or table.
+- Trajectory and distance-over-time plots comparing an evolved controller and the crossed vehicle under the same starting conditions.
+- Your discussion of the strategies you observed, and of how fair the comparison is.
 
-- Trajectory plots (`--viztraces`) for at least one evolved neural controller, alongside trajectories from the original crossed-wiring Braitenberg controller under matching starting conditions.
-- A discussion of differences in path smoothness, directness, and turning behavior between the two controllers.
-- Answers to the guiding questions from Part 3, including any distinctive strategies you observed in the evolved networks (e.g., use of reverse motion, which the neural controller can do but the original crossed-wiring vehicle cannot).
+**Required Part 3 — Explore One Aspect in Depth**
 
-**Part 4 — Quantitative Analysis**
-
-- Results from 10 independent evolutionary runs with the same parameters: best fitness and convergence generation for each run (state your definition of "convergence generation"), plus the (constant, since architecture doesn't vary in this part) genome size.
-- A plot or discussion of the variance across runs.
-- Answers to the guiding questions from Part 4 (does evolution always succeed, effect of population size on success rate, typical shape of the convergence curve).
-
-**Optional / Advanced Challenge** *(if attempted)*: a section naming which of the four directions you chose (or your own idea), what you changed, your results (with supporting figures), and your interpretation. Omit this section if you didn't attempt a challenge.
+- State what you chose to investigate and the question you were trying to answer.
+- Describe what you held fixed and what you varied, and show plots/results against a baseline configuration, with enough seeds to support your conclusion.
+- Most importantly, explain what you learned. Did the results match your prediction?
 
 ### Reminder of General Guidelines
 
@@ -479,16 +453,15 @@ Each part of the assignment (see *Assignment* above) is weighted roughly equally
 
 - **Title page (1 pt)** — includes all required information: name, course title, assignment name, date submitted, time spent, and self-assessment (1–10).
 - **Figures (2 pts)** — figures are easy to read, meaningful (they show what the text claims), properly labeled (axes, legend, caption), and each is paired with an interpretation in the text. A plot with no discussion, or discussion with no supporting plot, does not receive full credit.
-- **Creativity & critical thinking (2 pts)** — depth of insight, quality of open-ended reasoning, and evidence of genuine exploration beyond the minimum required to answer each question — especially in directly comparing the evolved controller against your own hand-designed one from Project 1, rather than describing each in isolation.
+- **Creativity & critical thinking (2 pts)** — depth of insight, quality of open-ended reasoning, and evidence of genuine exploration beyond the minimum required to answer each question — especially in directly comparing the evolved controller against the hand-designed one, rather than describing each in isolation.
 
 ---
 
 ## Further Reading
 
-- Floreano, D., Dürr, P., & Mattiussi, C. (2008). *Neuroevolution: from
-  architectures to learning.* Evolutionary Intelligence.
-- Stanley, K. O., & Miikkulainen, R. (2002). *Evolving Neural Networks through
-  Augmenting Topologies.* Evolutionary Computation.
+- Braitenberg, V. (1984). *Vehicles: Experiments in Synthetic Psychology.* MIT Press.
+- Floreano, D., Dürr, P., & Mattiussi, C. (2008). *Neuroevolution: from architectures to learning.* Evolutionary Intelligence.
+- Nolfi, S., & Floreano, D. (2000). *Evolutionary Robotics: The Biology, Intelligence, and Technology of Self-Organizing Machines.* MIT Press.
 
 ---
 

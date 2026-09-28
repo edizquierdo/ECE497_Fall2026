@@ -12,10 +12,10 @@ import eas as ea
 dataset = [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1],[-0.5,-0.5],[-0.5,0.5],[0.5,-0.5],[0.5,0.5]]
 labels = [1,1,1,1,1,1,1,1,0,0,0,0]
 
-popsize = 100
+popsize = 50
 recombProb = 0.5
 mutatStd = 0.01
-generations = 500
+generations = 250
 demeSize = 5
 eliteprop = 0.1
 
@@ -39,45 +39,67 @@ def fitnessFunction(genotype):
     return 1 - (error/len(dataset))
 
 # Running several repetitions
-reps = 100
+reps = 20
 # Parameters of the neural network
-layers = [2,2,1]
+layers = [2,6,1]
 # Parameters of the evolutionary algorithm
 genesize = np.sum(np.multiply(layers[1:],layers[:-1])) + np.sum(layers[1:]) + (len(layers)-1)*5  # Which activation function of 5 possible 
 print("Number of parameters:",genesize)
 for r in range(reps):
-    ga = ea.Generational(fitnessFunction, genesize, generations, popsize=popsize, recombProb=recombProb, mutatStd=mutatStd, demeSize=demeSize, eliteprop=eliteprop)
+    ga = ea.Microbial(fitnessFunction, genesize, generations, popsize=popsize, recombProb=recombProb, mutatStd=mutatStd, demeSize=demeSize, eliteprop=eliteprop)
     ga.run()
     plt.plot(ga.bestHistory,'r')
 plt.xlabel("Generations")
 plt.ylabel("Best fitness")
-plt.title("Best fitness over generations (5 runs)")
+plt.title("Best fitness over generations (20 runs)")
 
 # Running several repetitions
+mutatStd = 0.1
 # Parameters of the neural network
-layers = [2,5,1]
+layers = [2,6,1]
 # Parameters of the evolutionary algorithm
 genesize = np.sum(np.multiply(layers[1:],layers[:-1])) + np.sum(layers[1:]) + (len(layers)-1)*5  # Which activation function of 5 possible 
 print("Number of parameters:",genesize)
 for r in range(reps):
-    ga = ea.Generational(fitnessFunction, genesize, generations, popsize=popsize, recombProb=recombProb, mutatStd=mutatStd, demeSize=demeSize, eliteprop=eliteprop)
+    ga = ea.Microbial(fitnessFunction, genesize, generations, popsize=popsize, recombProb=recombProb, mutatStd=mutatStd, demeSize=demeSize, eliteprop=eliteprop)
     ga.run()
     plt.plot(ga.bestHistory,'b')
 plt.xlabel("Generations")
 plt.ylabel("Best fitness")
-plt.title("Best fitness over generations (5 runs)")
-
-# Running several repetitions
-# Parameters of the neural network
-layers = [2,2,2,1]
-# Parameters of the evolutionary algorithm
-genesize = np.sum(np.multiply(layers[1:],layers[:-1])) + np.sum(layers[1:]) + (len(layers)-1)*5  # Which activation function of 5 possible 
-print("Number of parameters:",genesize)
-for r in range(reps):
-    ga = ea.Generational(fitnessFunction, genesize, generations, popsize=popsize, recombProb=recombProb, mutatStd=mutatStd, demeSize=demeSize, eliteprop=eliteprop)
-    ga.run()
-    plt.plot(ga.bestHistory,'g')
-plt.xlabel("Generations")
-plt.ylabel("Best fitness")
-plt.title("Best fitness over generations (5 runs)")
+plt.title("Best fitness over generations (20 runs)")
 plt.show()
+
+
+
+
+
+
+
+# # Running several repetitions
+# # Parameters of the neural network
+# layers = [2,5,1]
+# # Parameters of the evolutionary algorithm
+# genesize = np.sum(np.multiply(layers[1:],layers[:-1])) + np.sum(layers[1:]) + (len(layers)-1)*5  # Which activation function of 5 possible 
+# print("Number of parameters:",genesize)
+# for r in range(reps):
+#     ga = ea.Generational(fitnessFunction, genesize, generations, popsize=popsize, recombProb=recombProb, mutatStd=mutatStd, demeSize=demeSize, eliteprop=eliteprop)
+#     ga.run()
+#     plt.plot(ga.bestHistory,'b')
+# plt.xlabel("Generations")
+# plt.ylabel("Best fitness")
+# plt.title("Best fitness over generations (5 runs)")
+
+# # Running several repetitions
+# # Parameters of the neural network
+# layers = [2,2,2,1]
+# # Parameters of the evolutionary algorithm
+# genesize = np.sum(np.multiply(layers[1:],layers[:-1])) + np.sum(layers[1:]) + (len(layers)-1)*5  # Which activation function of 5 possible 
+# print("Number of parameters:",genesize)
+# for r in range(reps):
+#     ga = ea.Generational(fitnessFunction, genesize, generations, popsize=popsize, recombProb=recombProb, mutatStd=mutatStd, demeSize=demeSize, eliteprop=eliteprop)
+#     ga.run()
+#     plt.plot(ga.bestHistory,'g')
+# plt.xlabel("Generations")
+# plt.ylabel("Best fitness")
+# plt.title("Best fitness over generations (5 runs)")
+# plt.show()

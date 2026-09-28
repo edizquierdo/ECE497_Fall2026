@@ -37,7 +37,7 @@ Structurally, the term splits into two movements. **Projects 1–3 build the pie
 
 - **A fitness function is a hypothesis about what "good" means.** You'll write several over the course of the term, and the projects deliberately ask you to reflect on what each one rewards — and what it accidentally rewards instead.
 - **Evolution is stochastic.** A single run tells you much less than you'd think. Use `--seed` when you want a specific run to be reproducible, but run multiple seeds before you trust a conclusion about *typical* behavior.
-- **Change one thing at a time.** Projects 1–3 give you a `study.py` sweep-and-plot script for exactly this reason — isolate a variable, hold everything else fixed, and let the plot make the argument. From Project 4 on, you're expected to write that sweep-and-plot code yourself (Project 6 also ships two sweep scripts, `hexapod_torque_sweep.py`/`hexapod_timescale_sweep.py`, but they're specific to its optional sim-to-real test, not a general-purpose replacement for `study.py`) — by then the pattern should be familiar enough to build without a template.
+- **Change one thing at a time.** Projects 1–3 give you a `study.py` sweep-and-plot script for exactly this reason — isolate a variable, hold everything else fixed, and let the plot make the argument. From Project 4 on, you're expected to write that sweep-and-plot code yourself — by then the pattern should be familiar enough to build without a template.
 - **A prediction beats a post-hoc explanation.** Several projects explicitly ask you to write down what you expect *before* you run the experiment. Do this even when it isn't asked — being surprised by your own results is one of the fastest ways to actually learn something here.
 - **The pipeline is the point, not just the result.** Projects 4–6 reuse the same evolve → simulate → analyze structure on three different bodies, so that by Project 6 the workflow itself is second nature and your attention goes to what's actually new: a controller with real memory, a second evolutionary algorithm, a much larger genome, and — if you attempt the optional part — a real physics engine that doesn't care what your idealized model assumed.
 
@@ -58,10 +58,10 @@ One exception to the 10-point pattern: Project 6 offers up to **1 additional poi
 
 Each project is self-contained: it has its own `requirements.txt` and its own virtual environment, created from inside that project's folder. There's no single shared environment for the whole course — set one up fresh the first time you start each project, following the "Installation" section of that project's own README.
 
-1. **Start with Project 1.** From inside `1_Braitenberg/assignment/`, follow its README's Installation section to create a virtual environment and install `requirements.txt`. Then confirm your environment works:
+1. **Start with Project 1.** From inside `1_Braitenberg/`, follow its README's Installation section to create a virtual environment and install `requirements.txt`. Then confirm your environment works:
 
    ```bash
-   cd 1_Braitenberg/assignment
+   cd 1_Braitenberg
    python sim.py --viztraces
    ```
 

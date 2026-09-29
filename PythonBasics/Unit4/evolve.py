@@ -7,19 +7,20 @@ import numpy as np
 import fnn
 import eas as ea
 import env
+from config import duration, distance, layers, weightrange    # shared with sim.py (see config.py)
 
 # Parameters of the task
-duration = 200      # time steps per trial
-distance = 5        # starting distance from the light
 reps = 4            # trials (random starting position and heading) per evaluation
+finaltrials = 100   # fresh trials used to re-evaluate the best individual at the end
+seed = None         # set to an integer to get the same run every time
 
-# Parameters of the neural network
-layers = [2,4,2]
-weightrange = 5     # genes are in [-1,1]; scale them so weights and biases are in [-5,5]
+if seed is not None:
+    np.random.seed(seed)
 
 # Parameters of the evolutionary algorithm
-genesize = np.sum(np.multiply(layers[1:],layers[:-1])) + np.sum(layers[1:]) + (len(layers)-1)*5  # Which activation function of 5 possible
+genesize = fnn.FNN.genome_size(layers)
 print("Number of parameters:",genesize)
+print("Each fitness evaluation averages",reps,"random trials")
 
 popsize = 50
 recombProb = 0.5
@@ -28,7 +29,7 @@ generations = 50
 demeSize = 5
 eliteprop = 0.1
 
-def fitnessFunction(genotype):
+def fitnessFunction(genotype, reps=reps):
     # Step 1: Create the neural network and set the parameters according to the genotype.
     controller = fnn.FNN(layers)
     controller.weightrange = weightrange
@@ -54,6 +55,8 @@ def fitnessFunction(genotype):
 ga = ea.Microbial(fitnessFunction, genesize, generations, popsize=popsize, recombProb=recombProb, mutatStd=mutatStd, demeSize=demeSize, eliteprop=eliteprop)
 ga.run()
 avgfit, bestfit, bestind = ga.fitStats()
-print("Best fitness:",bestfit)
+print("Best fitness (recorded during evolution):",bestfit)
+# The recorded fitness comes from only a few random trials, so check it on many new ones.
+print("Same individual on",finaltrials,"fresh trials:",fitnessFunction(bestind, reps=finaltrials))
 np.save("best.npy",bestind)
 ga.showFitness()

@@ -4,6 +4,7 @@ Evolve a feedforward neural network that steers a two-wheeled Braitenberg vehicl
 
 ## Files
 
+- `config.py`: settings shared by `evolve.py` and `sim.py` (`duration`, `distance`, `layers`, `weightrange`).
 - `env.py`: the vehicle (two light sensors, two motors) and a light at the origin. Each trial starts the vehicle 5 units from the light at a random position and heading.
 - `fnn.py`: feedforward neural network, same as Unit 3. Maps [left, right] sensors to [left, right] motors.
 - `eas.py`: evolutionary algorithms, same as Unit 3.
@@ -14,9 +15,11 @@ Evolve a feedforward neural network that steers a two-wheeled Braitenberg vehicl
 ## Run
 
 ```bash
-python3 evolve.py   # evolve (~15 s); saves best.npy and shows fitness over generations
+python3 evolve.py   # evolve (~15 s); prints recorded and fresh-trial fitness, saves best.npy, shows fitness over generations
 python3 sim.py                       # test best.npy on 20 new trials; saves sim.npz
 python3 viz.py                       # plot trajectories and distance over time
 ```
 
-Try changing the task (`duration`, `distance`, `reps`), the network (`layers`, `weightrange`), or the evolutionary algorithm (`popsize`, `generations`, `mutatStd`, or swap `ea.Microbial` for another algorithm in `eas.py`). If you change `layers` or `weightrange`, make the same change in `sim.py`.
+Try changing the task (`duration`, `distance` in `config.py`, `reps` in `evolve.py`), the network (`layers`, `weightrange` in `config.py`), or the evolutionary algorithm (`popsize`, `generations`, `mutatStd`, or swap `ea.Microbial` for another algorithm in `eas.py`).
+
+Set `seed` in `evolve.py` to an integer to reproduce a run exactly.

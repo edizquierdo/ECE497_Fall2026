@@ -35,6 +35,15 @@ class FNN:
         self.weightrange = 0.1
         self.biasrange = 0.1
 
+    @staticmethod
+    def genome_size(units_per_layer):
+        """ Number of genes needed for a network with the given layers:
+        one per weight, one per bias, and one per possible activation function for every layer
+        (there are 5 possible activation functions)
+        """
+        n = np.asarray(units_per_layer)
+        return int(np.sum(n[:-1]*n[1:]) + np.sum(n[1:]) + 5*(len(n)-1))
+
     def setParams(self, params):
         """ Set the weights, biases, and activation functions of the neural network 
         Weights and biases are set directly by a parameter;
@@ -57,7 +66,7 @@ class FNN:
         self.activation = []
         for l in np.arange(self.num_layers-1):
             end = start + len(self.activation_funcs)
-            actfunc = 4 # FORCED TO BE SIGMOID np.argmax(params[start:end])
+            actfunc = np.argmax(params[start:end])
             self.activation.append(self.activation_funcs[actfunc])            
             start = end
 

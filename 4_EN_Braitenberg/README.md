@@ -60,7 +60,7 @@ At each time step, the vehicle is rewarded for proximity to the light as `1 / (1
 - **There is no reachable "perfect" score.** A vehicle would have to start on top of the light to score 1.0. Every vehicle starts 10 units away and needs time to get there, so the best achievable fitness is well below 1.0. This is why, unlike Project 3, `evolve.py` has no early stopping and every run uses all of its generations.
 - **Fitness is noisy.** Starting positions, headings, and motion noise are random, so evaluating the *same* genome twice gives two different numbers. The best fitness reported in a generation is partly a measure of how good that genome is, and partly a measure of how lucky it was. EvoTorch re-evaluates the surviving parents every generation, so a lucky genome does not stay on top forever — which also means that, unlike Project 3, the best fitness curve can go *down* from one generation to the next. After evolution, `evolve.py` re-evaluates the best genome on 100 new episodes (`--final_evals`) to give you a more trustworthy number.
 
-To give you a sense of scale, with the default settings: a vehicle that never moves scores about 0.09; the hand-wired crossed vehicle from Project 1 scores about 0.2; a typical evolved controller scores about 0.6.
+To give you a sense of scale, with the default settings: a vehicle that never moves scores about 0.09; the hand-wired crossed vehicle from Project 1 scores about 0.2; a typical evolved controller scores about 0.65 (0.6 to 0.7 across seeds).
 
 ### The Neural Vehicle
 
@@ -177,7 +177,7 @@ Useful command-line options include:
 | `--hidden` | Number of hidden neurons in a single hidden layer | `8` |
 | `--hidden_sizes N [N ...]` | List of hidden-layer sizes, e.g. `--hidden_sizes 16 16`. Overrides `--hidden` when given. Pass `--hidden_sizes` with no numbers for a network with no hidden layer at all | `None` |
 | `--activation` | Hidden layer activation (`tanh`, `sigmoid`, or `relu`). The output layer is always Tanh | `tanh` |
-| `--popsize` | Population size | `50` |
+| `--popsize` | Population size | `200` |
 | `--gens` | Number of generations | `100` |
 | `--mut_stdev` | Gaussian mutation standard deviation | `0.5` |
 | `--tournament_size` | Tournament size for SBX crossover | `3` |
@@ -278,7 +278,7 @@ When you compare evolved controllers, remember that the best fitness *during* ev
 
 ### IMPORTANT REMINDER
 
-When you are doing a parameter sweep, remember to run it first with a small number of repetitions: 3–5 seeds per value or so. That way you can get an idea of the general shape. But remember that the shape will be very noisy. That noise is likely NOT REAL. Then, give yourself some time to repeat the same experiment with more repetitions — 10 or more if you can. A default run takes about a minute, so a sweep of 5 values × 10 seeds is under an hour. Let your laptop sit and work on it!
+When you are doing a parameter sweep, remember to run it first with a small number of repetitions: 3–5 seeds per value or so. That way you can get an idea of the general shape. But remember that the shape will be very noisy. That noise is likely NOT REAL. Then, give yourself some time to repeat the same experiment with more repetitions — 10 or more if you can. A default run takes about a minute, so a sweep of 5 values × 10 seeds takes about an hour. Let your laptop sit and work on it!
 
 ---
 

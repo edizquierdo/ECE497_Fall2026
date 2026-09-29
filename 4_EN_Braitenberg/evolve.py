@@ -110,7 +110,7 @@ def parse_args():
     parser.add_argument("--activation", type=str, default="tanh", choices=["tanh", "relu", "sigmoid"],
                         help="Hidden layer activation. The output layer is always Tanh (default: tanh)")
     # -- Evolutionary algorithm --
-    parser.add_argument("--popsize", type=int, default=50, help="Population size (default: 50)")
+    parser.add_argument("--popsize", type=int, default=200, help="Population size (default: 200)")
     parser.add_argument("--gens", type=int, default=100, help="Number of generations (default: 100)")
     parser.add_argument("--mut_stdev", type=float, default=0.5,
                         help="Gaussian mutation standard deviation (default: 0.5)")
@@ -158,7 +158,7 @@ def parse_args():
 #  2.  Neuroevolution Runner
 # ─────────────────────────────────────────────────────────────
 
-def run_neuroevolution(hidden=8, popsize=50, gens=100, mut_stdev=0.5, activation="tanh",
+def run_neuroevolution(hidden=8, popsize=200, gens=100, mut_stdev=0.5, activation="tanh",
                        verbose=False, seed=None, tournament_size=3, eta=20, elitism=True,
                        seed_genome_path=None, seed_noise=0.05, hidden_sizes=None,
                        init_bounds=(-1.0, 1.0), use_crossover=True, episodes_per_eval=5,

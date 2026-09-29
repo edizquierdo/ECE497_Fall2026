@@ -1,19 +1,13 @@
 ##################################################################################
-# Simulate the best evolved vehicle (best.npy, from evolve_fnn_embodiedtask.py)
+# Simulate the best evolved vehicle (best.npy, from evolve.py)
 # on many new trials and save its behavior to a file (used by viz.py).
 ##################################################################################
 import numpy as np
 import fnn
 import env
+from config import duration, distance, layers, weightrange    # shared with evolve.py (see config.py)
 
-# Parameters of the task (should match evolve_fnn_embodiedtask.py)
-duration = 200
-distance = 5
 trials = 20         # number of random starting positions/headings to test
-
-# Parameters of the neural network (must match evolve_fnn_embodiedtask.py)
-layers = [2,4,2]
-weightrange = 5
 
 def SimInd(genotype):
     # Create the neural network and set the parameters according to the genotype

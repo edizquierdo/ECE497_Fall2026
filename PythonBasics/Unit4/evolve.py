@@ -25,7 +25,7 @@ print("Each fitness evaluation averages",reps,"random trials")
 popsize = 50
 recombProb = 0.5
 mutatStd = 0.05
-generations = 50
+generations = 100
 demeSize = 5
 eliteprop = 0.1
 
@@ -54,8 +54,10 @@ def fitnessFunction(genotype, reps=reps):
 # Evolve
 ga = ea.Microbial(fitnessFunction, genesize, generations, popsize=popsize, recombProb=recombProb, mutatStd=mutatStd, demeSize=demeSize, eliteprop=eliteprop)
 ga.run()
+
 avgfit, bestfit, bestind = ga.fitStats()
 print("Best fitness (recorded during evolution):",bestfit)
+
 # The recorded fitness comes from only a few random trials, so check it on many new ones.
 print("Same individual on",finaltrials,"fresh trials:",fitnessFunction(bestind, reps=finaltrials))
 np.save("best.npy",bestind)

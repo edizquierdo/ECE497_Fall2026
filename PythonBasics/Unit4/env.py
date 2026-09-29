@@ -68,7 +68,9 @@ class Braitenberg:
 
     def think(self):
         # The neural network maps [left sensor, right sensor] to [left motor, right motor]
-        self.motors = self.controller.forward(self.sensors)[0]
+        # Motors are capped to [0, 1] (like the sensors): without a cap, evolution finds huge motor
+        # values that make the vehicle spin and jitter every step, instead of steering smoothly
+        self.motors = np.clip(self.controller.forward(self.sensors)[0], 0, 1)
 
     def move(self):
         # A faster right wheel turns the vehicle left (counterclockwise), and vice versa

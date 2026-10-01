@@ -10,7 +10,7 @@ import env
 from config import duration, distance, layers, weightrange    # shared with sim.py (see config.py)
 
 # Parameters of the task
-reps = 4            # trials (random starting position and heading) per evaluation
+reps = 1            # trials (random starting position and heading) per evaluation
 finaltrials = 100   # fresh trials used to re-evaluate the best individual at the end
 seed = None         # set to an integer to get the same run every time
 
@@ -24,7 +24,7 @@ print("Each fitness evaluation averages",reps,"random trials")
 
 popsize = 50
 recombProb = 0.5
-mutatStd = 0.05
+mutatStd = 0.01
 generations = 100
 demeSize = 5
 eliteprop = 0.1
@@ -52,7 +52,7 @@ def fitnessFunction(genotype, reps=reps):
     return fitness/(reps*duration)
 
 # Evolve
-ga = ea.Microbial(fitnessFunction, genesize, generations, popsize=popsize, recombProb=recombProb, mutatStd=mutatStd, demeSize=demeSize, eliteprop=eliteprop)
+ga = ea.Generational(fitnessFunction, genesize, generations, popsize=popsize, recombProb=recombProb, mutatStd=mutatStd, demeSize=demeSize, eliteprop=eliteprop)
 ga.run()
 
 avgfit, bestfit, bestind = ga.fitStats()

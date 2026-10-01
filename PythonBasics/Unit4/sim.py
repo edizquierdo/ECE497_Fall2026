@@ -7,7 +7,7 @@ import fnn
 import env
 from config import duration, distance, layers, weightrange    # shared with evolve.py (see config.py)
 
-trials = 20         # number of random starting positions/headings to test
+trials = 1000         # number of random starting positions/headings to test
 
 def SimInd(genotype):
     # Create the neural network and set the parameters according to the genotype

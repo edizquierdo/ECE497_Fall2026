@@ -1,0 +1,12 @@
+# EvoGym ships prebuilt wheels for Python 3.7-3.10 only -- create this
+# project's environment with Python 3.10 (see README "Installation").
+evogym==2.0.0
+# EvoGym 2.0 still imports pkg_resources, which setuptools 81+ removed.
+setuptools<81
+numpy>=1.24,<2
+matplotlib>=3.7,<4
+torch>=2.0,<3
+evotorch>=0.5,<0.7
+gymnasium>=1.0,<2
+imageio>=2.30,<3
+pillow>=10,<12

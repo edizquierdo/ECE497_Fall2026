@@ -1,4 +1,4 @@
-# Project 5: Embodied NeuroEvolution II — CartPole Balancing
+# Optional Project: Embodied NeuroEvolution — CartPole Balancing
 
 ## Overview
 
@@ -474,7 +474,7 @@ The first page of your report should include:
 
 - Your name
 - Course title (ECE497: Evolutionary Robotics)
-- Assignment name (Project 5: Embodied NeuroEvolution II — CartPole Balancing)
+- Assignment name (Optional Project: Embodied NeuroEvolution — CartPole Balancing)
 - Date submitted
 - Amount of time spent on this project
 - A self-assessment of your confidence in your understanding of the concepts, the code, and the insights gained from this project (a number between 1 and 10)

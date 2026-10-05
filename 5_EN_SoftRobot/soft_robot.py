@@ -151,6 +151,50 @@ def center_of_mass(env):
     return sim.object_pos_at_time(sim.get_time(), "robot").mean(axis=1)
 
 
+def voxel_corners(env, body):
+    """Which point masses sit at the four corners of each voxel.
+
+    EvoGym gives the positions of the robot's point masses, but not which
+    voxel each one belongs to. Right after env.reset(), though, the robot
+    is undeformed and every point mass sits exactly on the voxel-corner
+    lattice, so the mapping can be read off the starting positions.
+
+    Returns a (rows, cols, 4) int array of point-mass indices, ordered
+    (bottom-left, bottom-right, top-left, top-right), with -1 for empty voxels.
+    Call it once per episode, right after env.reset().
+    """
+    sim = env.unwrapped
+    pos = sim.object_pos_at_time(sim.get_time(), "robot")
+    lattice = np.round((pos - pos.min(axis=1, keepdims=True)) / sim.VOXEL_SIZE).astype(int)
+    index_of = {(x, y): i for i, (x, y) in enumerate(lattice.T)}
+    body = np.asarray(body)
+    rows, cols = np.nonzero(body)
+    bottom_row, left_col = rows.max(), cols.min()
+    corners = -np.ones(body.shape + (4,), dtype=int)
+    for r, c in zip(rows, cols):
+        x, y = c - left_col, bottom_row - r  # lattice coords of the voxel's bottom-left corner (y points up)
+        corners[r, c] = [index_of[(x, y)], index_of[(x + 1, y)],
+                         index_of[(x, y + 1)], index_of[(x + 1, y + 1)]]
+    return corners
+
+
+def voxel_strains(env, corners):
+    """Current (width, height) of every voxel relative to its rest size, minus 1.
+
+    0 means at rest, positive means stretched, negative means squeezed.
+    Returns a (rows, cols, 2) array, zero for empty voxels.
+    """
+    sim = env.unwrapped
+    pos = sim.object_pos_at_time(sim.get_time(), "robot") / sim.VOXEL_SIZE
+    filled = corners[..., 0] >= 0
+    bl, br, tl, tr = (pos[:, corners[filled, k]] for k in range(4))
+    width = 0.5 * (np.linalg.norm(br - bl, axis=0) + np.linalg.norm(tr - tl, axis=0))
+    height = 0.5 * (np.linalg.norm(tl - bl, axis=0) + np.linalg.norm(tr - br, axis=0))
+    strains = np.zeros(corners.shape[:2] + (2,))
+    strains[filled] = np.stack([width - 1, height - 1], axis=1)
+    return strains
+
+
 def run_episode(env, controller, record=False, frame_every=0):
     """Run one full episode of `controller` in `env` and return its total reward.
 

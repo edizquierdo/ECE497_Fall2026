@@ -1,6 +1,6 @@
 # Unit 7: Evolving the Body and Brain of a Soft Robot
 
-Evolve both the shape and the neural controller of a soft robot that walks to the right, using the same `eas.py` and `fnn.py` as Unit 4, with [Evolution Gym](https://evolutiongym.github.io) (EvoGym) as the physics engine. It mirrors Project 7 without PyTorch or EvoTorch.
+Evolve both the shape and the neural controller of a soft robot that walks to the right, using the same `eas.py` and `fnn.py` as Unit 4, with [Evolution Gym](https://evolutiongym.github.io) (EvoGym) as the physics engine. It mirrors Project 5 without PyTorch or EvoTorch.
 
 ## The idea
 

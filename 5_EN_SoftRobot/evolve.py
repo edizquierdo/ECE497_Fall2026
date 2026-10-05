@@ -5,11 +5,11 @@ crossover + Gaussian mutation + elitism), parallelized across CPU cores via Ray.
 Three things can be evolved, selected with `--mode`:
 
     control     The body is fixed (--body); evolve only its controller
-                (--controller mlp or oscillator).
+                (--controller neural, oscillator, or local).
+    codesign    Evolve the body AND its controller together, in a single
+                genome (--controller oscillator or local).
     morphology  The controller is fixed (a traveling sine wave); evolve only
                 the body, on a --grid x --grid voxel grid.
-    codesign    Evolve the body AND an oscillator controller together, in a
-                single genome.
 
 The EA itself is identical in all three modes. It only ever sees a flat
 vector of real numbers -- what changes is how that vector is decoded into a
@@ -17,11 +17,13 @@ robot (see `decode_robot()`), and so how long it is (`genome_length()`).
 
 Genome layouts (G = grid*grid voxels, A = actuators in the fixed body):
 
-    control / mlp          all network weights and biases
+    control / neural       all network weights and biases
     control / oscillator   A phases
-    morphology             G*5 material genes (each voxel: argmax of its five)
-    codesign               G*5 material genes, then G phases (one per voxel;
+    control / local        the shared local network's weights and biases
+    codesign / oscillator  G*5 material genes, then G phases (one per voxel;
                            only voxels that end up as actuators use theirs)
+    codesign / local       G*5 material genes, then the shared local network
+    morphology             G*5 material genes (each voxel: argmax of its five)
 """
 
 import os
@@ -48,11 +50,11 @@ from soft_robot import (
     body_to_string,
 )
 from neural_controller import (
-    NeuralController, OscillatorController, traveling_wave_phases, DEFAULT_PERIOD,
+    NeuralController, OscillatorController, LocalController, traveling_wave_phases, DEFAULT_PERIOD,
 )
 
 # Silence start-up noise from Ray and EvoTorch that's about their own
-# internals, not this project (same as Project 6).
+# internals, not this project.
 logging.getLogger("evotorch").setLevel(logging.WARNING)
 os.environ.setdefault("RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO", "0")
 os.environ.setdefault("RAY_DEDUP_LOGS", "1")
@@ -69,7 +71,7 @@ logging.getLogger("ray").setLevel(logging.ERROR)
 def make_config(args):
     return {
         "mode": args.mode,
-        "controller": args.controller if args.mode == "control" else "oscillator",
+        "controller": args.controller,
         "body": load_body(args.body).tolist() if args.mode == "control" else None,
         "grid": args.grid,
         "env": args.env,
@@ -80,8 +82,8 @@ def make_config(args):
     }
 
 
-def _mlp_sizes(cfg, body):
-    """(obs_size, n_actuators) for an MLP on `body` in cfg's task."""
+def _network_sizes(cfg, body):
+    """(obs_size, n_actuators) for a NeuralController on `body` in cfg's task."""
     env = make_env(body, cfg["env"], cfg["duration"])
     sizes = env.observation_space.shape[0], env.action_space.shape[0]
     env.close()
@@ -93,11 +95,15 @@ def genome_length(cfg):
     if cfg["mode"] == "morphology":
         return n_voxels * N_MATERIALS
     if cfg["mode"] == "codesign":
+        if cfg["controller"] == "local":
+            return n_voxels * N_MATERIALS + LocalController.genome_size(cfg["hidden"])
         return n_voxels * N_MATERIALS + n_voxels
     body = np.array(cfg["body"])
+    if cfg["controller"] == "local":
+        return LocalController.genome_size(cfg["hidden"])
     if cfg["controller"] == "oscillator":
         return len(actuator_indices(body))
-    obs_size, n_act = _mlp_sizes(cfg, body)
+    obs_size, n_act = _network_sizes(cfg, body)
     return NeuralController.genome_size(obs_size, n_act, cfg["hidden"])
 
 
@@ -114,6 +120,10 @@ def decode_controller(genome, cfg, body, env):
     period = cfg["period"]
     if cfg["mode"] == "morphology":
         return OscillatorController(traveling_wave_phases(body), period)
+    if cfg["controller"] == "local":
+        n_material_genes = cfg["grid"] ** 2 * N_MATERIALS if cfg["mode"] == "codesign" else 0
+        return LocalController(genome[n_material_genes:], body, env,
+                               cfg["hidden"], cfg["activation"], period)
     if cfg["mode"] == "codesign":
         n_material_genes = cfg["grid"] ** 2 * N_MATERIALS
         voxel_phases = OscillatorController.genes_to_phases(genome[n_material_genes:])
@@ -134,8 +144,9 @@ def make_fitness_fn(cfg):
 
     EvoGym's physics is deterministic and every episode starts from the same
     state, so one episode per evaluation is enough -- a second one would
-    return exactly the same number. (Contrast with CartPole, whose random
-    initial state is why Project 5 averages several.)
+    return exactly the same number. (Contrast with Project 4, where random
+    starting positions and motion noise made fitness noisy, so it averaged
+    several episodes.)
 
     For Walker-v0 the reward is essentially how far the robot's center of
     mass moved to the right, so fitness ~ distance traveled.
@@ -241,7 +252,7 @@ def run_evolution(cfg, popsize=50, gens=50, mut_stdev=0.1, tournament_size=3, et
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evolve soft robots (body, controller, or both) in EvoGym.")
-    parser.add_argument("--mode", choices=["control", "morphology", "codesign"], default="control",
+    parser.add_argument("--mode", choices=["control", "codesign", "morphology"], default="control",
                         help="What to evolve: the controller of a fixed body, the body under a fixed "
                              "controller, or both together (default: control)")
 
@@ -254,16 +265,19 @@ def parse_args():
                              "evolved on (default: 5)")
 
     # -- controller --
-    parser.add_argument("--controller", choices=["mlp", "oscillator"], default="mlp",
-                        help="[control only] mlp = closed-loop feedforward network; oscillator = "
-                             "open-loop sine wave, one evolved phase per actuator (default: mlp). "
-                             "morphology/codesign always use an oscillator.")
-    parser.add_argument("--hidden", type=int, nargs="+", default=[16],
-                        help="[mlp only] Hidden layer size(s), e.g. --hidden 32 or --hidden 16 16")
+    parser.add_argument("--controller", choices=["neural", "oscillator", "local"], default=None,
+                        help="neural = one closed-loop network for the whole body (control mode only); "
+                             "oscillator = open-loop sine wave, one evolved phase per actuator; "
+                             "local = one small network shared by every actuator voxel. "
+                             "Default: neural in control mode, oscillator in codesign mode. "
+                             "morphology always uses a fixed traveling wave.")
+    parser.add_argument("--hidden", type=int, nargs="+", default=None,
+                        help="[neural/local] Hidden layer size(s), e.g. --hidden 32 or --hidden 16 16 "
+                             "(default: 16 for neural, 8 for local)")
     parser.add_argument("--activation", choices=["tanh", "relu", "sigmoid"], default="tanh",
-                        help="[mlp only] Hidden-layer activation (output is always Tanh, rescaled)")
+                        help="[neural/local] Hidden-layer activation (output is always Tanh, rescaled)")
     parser.add_argument("--period", type=int, default=DEFAULT_PERIOD,
-                        help=f"[oscillator only] Steps per oscillation cycle (default: {DEFAULT_PERIOD})")
+                        help=f"[oscillator/local] Steps per oscillation (or clock) cycle (default: {DEFAULT_PERIOD})")
 
     # -- task --
     parser.add_argument("--env", type=str, default=DEFAULT_ENV,
@@ -275,7 +289,7 @@ def parse_args():
     parser.add_argument("--popsize", type=int, default=50, help="Population size (default: 50)")
     parser.add_argument("--gens", type=int, default=50, help="Number of generations (default: 50)")
     parser.add_argument("--mut_stdev", type=float, default=None,
-                        help="Gaussian mutation standard deviation (default: 0.1 for mlp, 0.2 otherwise)")
+                        help="Gaussian mutation standard deviation (default: 0.1 for neural, 0.2 otherwise)")
     parser.add_argument("--tournament_size", type=int, default=3, help="Tournament size for SBX crossover")
     parser.add_argument("--eta", type=float, default=20, help="Distribution index for SBX crossover")
     parser.add_argument("--no-elitism", action="store_false", dest="elitism",
@@ -298,7 +312,17 @@ def parse_args():
     parser.add_argument("--fitness_output", type=str, default=None,
                         help="Save per-generation fitness to this .npz file (keys: 'best', 'avg', "
                              "'worst')")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.mode == "morphology":
+        args.controller = "oscillator"  # a fixed traveling wave
+    elif args.controller is None:
+        args.controller = "neural" if args.mode == "control" else "oscillator"
+    elif args.mode == "codesign" and args.controller == "neural":
+        parser.error("--controller neural only fits the one body it was built for, so it can't be "
+                     "co-designed with a body. Use --controller oscillator or local.")
+    if args.hidden is None:
+        args.hidden = [8] if args.controller == "local" else [16]
+    return args
 
 
 def config_path_for(genome_path):
@@ -309,12 +333,12 @@ def main():
     args = parse_args()
     cfg = make_config(args)
     if args.mut_stdev is None:
-        args.mut_stdev = 0.1 if cfg["controller"] == "mlp" else 0.2
+        args.mut_stdev = 0.1 if cfg["controller"] == "neural" else 0.2
 
     n_genes = genome_length(cfg)
     what = {"control": f"{cfg['controller']} controller for fixed body '{args.body}'",
             "morphology": f"{args.grid}x{args.grid} body under a fixed traveling-wave controller",
-            "codesign": f"{args.grid}x{args.grid} body + oscillator controller together"}[args.mode]
+            "codesign": f"{args.grid}x{args.grid} body + {args.controller} controller together"}[args.mode]
     print(f"Evolving {what} on {args.env}: {n_genes} genes, popsize={args.popsize}, "
           f"gens={args.gens}, mut_stdev={args.mut_stdev}")
     if args.mode == "control":

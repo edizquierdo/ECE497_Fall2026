@@ -21,10 +21,10 @@ brainsize = fnn.FNN.genome_size(layers)
 genesize = bodysize + brainsize
 print("Number of parameters:",genesize,"(body:",bodysize,"+ brain:",brainsize,")")
 
-popsize = 20
+popsize = 100 #20
 recombProb = 0.5
 mutatStd = 0.1
-generations = 30
+generations = 100 #30
 demeSize = 5
 eliteprop = 0.1
 
@@ -53,7 +53,7 @@ def fitnessFunction(genotype):
     return fitness
 
 # Evolve
-ga = ea.Generational(fitnessFunction, genesize, generations, popsize=popsize, recombProb=recombProb, mutatStd=mutatStd, demeSize=demeSize, eliteprop=eliteprop)
+ga = ea.Microbial(fitnessFunction, genesize, generations, popsize=popsize, recombProb=recombProb, mutatStd=mutatStd, demeSize=demeSize, eliteprop=eliteprop)
 ga.run()
 
 avgfit, bestfit, bestind = ga.fitStats()

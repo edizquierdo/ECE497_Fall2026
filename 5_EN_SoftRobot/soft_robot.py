@@ -48,6 +48,12 @@ INVALID_FITNESS = -1.0
 
 DEFAULT_ENV = "Walker-v0"
 
+# Episode length in simulation steps. Walker-v0's own default is 500, but at
+# 500 steps good robots reach the end of the track (and Walker-v0's ceiling)
+# just before time runs out, so they all tie. At 300 they don't, and every
+# evaluation is 40% faster.
+DEFAULT_DURATION = 300
+
 # Hand-designed bodies, all 5x5. Row 0 is the top of the robot.
 PRESET_BODIES = {
     # Two legs joined by a torso; every voxel a horizontal actuator.
@@ -73,6 +79,14 @@ PRESET_BODIES = {
         [2, 2, 2, 2, 2],
         [4, 2, 4, 2, 4],
         [3, 3, 3, 3, 3],
+    ],
+    # Three legs hanging from a rigid back; each leg mixes both kinds of muscle.
+    "tripod": [
+        [1, 1, 1, 1, 1],
+        [3, 3, 3, 3, 3],
+        [4, 0, 4, 0, 4],
+        [4, 0, 4, 0, 4],
+        [3, 0, 3, 0, 3],
     ],
 }
 
@@ -125,7 +139,7 @@ def decode_body(genes, grid):
     return logits.argmax(axis=-1)
 
 
-def make_env(body, env_id=DEFAULT_ENV, duration=None, render_mode=None):
+def make_env(body, env_id=DEFAULT_ENV, duration=DEFAULT_DURATION, render_mode=None):
     """Create an EvoGym environment for `body`.
 
     `import evogym.envs` is what registers EvoGym's tasks with Gymnasium.
@@ -136,7 +150,7 @@ def make_env(body, env_id=DEFAULT_ENV, duration=None, render_mode=None):
     Args:
         body: 2D int array of material codes.
         env_id: EvoGym task name (default 'Walker-v0').
-        duration: Episode length in simulation steps; None = the task's own default.
+        duration: Episode length in simulation steps (default 300); None = the task's own default.
         render_mode: None (headless), 'rgb_array' (frames for GIFs), or 'human' (window).
     """
     import gymnasium as gym

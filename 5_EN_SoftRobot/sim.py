@@ -9,8 +9,8 @@ and sim.py reads that automatically -- no need to re-type matching flags.
 task or episode length it wasn't evolved for.
 
 Run without --genome to try a preset or hand-designed body with a
-randomly-phased oscillator (a quick way to check your setup, or to see
-what a body does before evolution touches it).
+random, unevolved brain (a quick way to check your setup, or to see what a
+body does before evolution touches it).
 """
 
 import json
@@ -21,10 +21,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from soft_robot import (
-    DEFAULT_ENV, PRESET_BODIES, load_body, is_valid_body, actuator_indices,
+    DEFAULT_ENV, DEFAULT_DURATION, PRESET_BODIES, load_body, is_valid_body,
     make_env, run_episode, body_to_string, plot_body,
 )
-from neural_controller import OscillatorController, DEFAULT_PERIOD
+from neural_controller import CONTROLLERS, DEFAULT_HIDDEN, DEFAULT_PERIOD
 from evolve import config_path_for, decode_body_from_genome, decode_controller
 
 
@@ -32,9 +32,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Simulate an evolved EvoGym soft robot.")
     parser.add_argument("--genome", type=str, default=None,
                         help="Genome saved by evolve.py --output (its .json settings file must sit "
-                             "next to it). Omit to run --body with a random oscillator.")
+                             "next to it). Omit to run --body with a random, unevolved brain.")
     parser.add_argument("--body", type=str, default="biped",
                         help=f"[no --genome only] Preset ({', '.join(PRESET_BODIES)}) or .txt/.npy file")
+    parser.add_argument("--controller", choices=list(CONTROLLERS), default="local",
+                        help="[no --genome only] Kind of random brain to use (default: local)")
+    parser.add_argument("--loop", choices=["open", "closed"], default="closed",
+                        help="[no --genome only] open- or closed-loop random brain (default: closed)")
     parser.add_argument("--env", type=str, default=None,
                         help="Override the task (default: whatever the genome was evolved on)")
     parser.add_argument("--duration", type=int, default=None,
@@ -45,7 +49,7 @@ def parse_args():
     parser.add_argument("--gif", type=str, default=None, help="Save an animation to this .gif file")
     parser.add_argument("--render", action="store_true", help="Watch the episode live in a window")
     parser.add_argument("--seed", type=int, default=None,
-                        help="[no --genome only] Seed for the random oscillator phases")
+                        help="[no --genome only] Seed for the random brain's weights")
     return parser.parse_args()
 
 
@@ -53,11 +57,14 @@ def build(args):
     """Return (body, cfg, genome) for the robot to simulate."""
     if args.genome is None:
         body = load_body(args.body)
-        cfg = {"mode": "control", "controller": "oscillator", "body": body.tolist(),
-               "env": DEFAULT_ENV, "duration": None, "period": DEFAULT_PERIOD}
-        rng = np.random.default_rng(args.seed)
-        genome = rng.uniform(-1, 1, len(actuator_indices(body)))
-        print(f"No --genome given: running body '{args.body}' with random oscillator phases.")
+        cfg = {"mode": "control", "controller": args.controller, "loop": args.loop,
+               "body": body.tolist(), "env": DEFAULT_ENV, "duration": DEFAULT_DURATION,
+               "hidden": DEFAULT_HIDDEN[args.controller], "activation": "tanh",
+               "period": DEFAULT_PERIOD}
+        n_genes = CONTROLLERS[args.controller].genome_size(body.shape, args.loop == "closed", cfg["hidden"])
+        genome = np.random.default_rng(args.seed).uniform(-1, 1, n_genes)
+        print(f"No --genome given: running body '{args.body}' with a random {args.loop}-loop "
+              f"{args.controller} brain.")
     else:
         cfg_path = config_path_for(args.genome)
         if not os.path.exists(cfg_path):
@@ -67,8 +74,9 @@ def build(args):
             cfg = json.load(f)
         genome = np.load(args.genome)
         body = decode_body_from_genome(genome, cfg)
-        print(f"Loaded {args.genome} ({cfg['mode']} mode, {cfg['controller']} controller, "
-              f"evolved on {cfg['env']})")
+        brain = "fixed traveling-wave" if cfg["mode"] == "morphology" else \
+            f"{cfg['loop']}-loop {cfg['controller']}"
+        print(f"Loaded {args.genome} ({cfg['mode']} mode, {brain} brain, evolved on {cfg['env']})")
     if args.env is not None:
         cfg["env"] = args.env
     if args.duration is not None:

@@ -395,12 +395,19 @@ Each part of the assignment (see *Assignment* above) is weighted roughly equally
 
 ---
 
-## Further Reading
+## Readings
 
-- Bhatia, J., Jackson, H., Tian, Y., Xu, J., & Matusik, W. (2021). *Evolution Gym: A Large-Scale Benchmark for Evolving Soft Robots.* NeurIPS. ([project page](https://evolutiongym.github.io))
-- Sims, K. (1994). *Evolving Virtual Creatures.* SIGGRAPH.
-- Cheney, N., MacCurdy, R., Clune, J., & Lipson, H. (2013). *Unshackling Evolution: Evolving Soft Robots with Multiple Materials and a Powerful Generative Encoding.* GECCO.
-- Pfeifer, R., & Bongard, J. (2006). *How the Body Shapes the Way We Think.* MIT Press.
+**Required:**
+
+- **[R5A]** Sims, K. (1994). *Evolving Virtual Creatures.* SIGGRAPH. ([paper](http://www.karlsims.com/papers/siggraph94.pdf), [video](https://youtu.be/JBgG_VSP7f8)) Bodies and brains co-evolved together, and the same problem you face here: the brain has to fit whatever body the genome builds.
+- **[R5B]** Cheney, N., MacCurdy, R., Clune, J., & Lipson, H. (2013). *Unshackling Evolution: Evolving Soft Robots with Multiple Materials and a Powerful Generative Encoding.* GECCO. ([paper](http://jeffclune.com/publications/2013_Softbots_GECCO.pdf)) Voxel soft robots evolved to walk, the closest ancestor of this project. Its brain is a single sine wave, so the gait comes almost entirely from the body.
+
+**Further reading:**
+
+- Bhatia, J., Jackson, H., Tian, Y., Xu, J., & Matusik, W. (2021). *Evolution Gym: A Large-Scale Benchmark for Evolving Soft Robots.* NeurIPS. ([paper](https://arxiv.org/abs/2201.09863), [project page](https://evolutiongym.github.io))
+- Pfeifer, R., & Gómez, G. (2009). *Morphological Computation – Connecting Brain, Body, and Environment.* In *Creating Brain-Like Intelligence*. Springer.
+- Müller, V. C., & Hoffmann, M. (2017). *What Is Morphological Computation? On How the Body Contributes to Cognition and Control.* Artificial Life, 23(1).
+- Pfeifer, R., & Bongard, J. (2007). *How the Body Shapes the Way We Think.* MIT Press.
 
 ---
 

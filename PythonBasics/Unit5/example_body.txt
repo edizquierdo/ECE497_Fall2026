@@ -1,0 +1,7 @@
+# A hand-designed body: one material code per voxel, row 0 = top.
+# 0 empty  1 rigid  2 soft  3 horizontal actuator  4 vertical actuator
+1 1 1 1 1
+2 3 3 3 2
+2 4 0 4 2
+2 4 0 4 2
+3 3 0 3 3

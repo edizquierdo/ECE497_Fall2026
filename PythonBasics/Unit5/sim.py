@@ -5,21 +5,25 @@
 import numpy as np
 import fnn
 import env
-from config import envname, duration, grid, period, layers, weightrange    # shared with evolve.py (see config.py)
+from config import envname, duration, mode, body, grid, controller, loop, hidden, period, weightrange    # shared with evolve.py (see config.py)
 
 render = True       # set to False to skip the animation window
 
 def SimInd(genotype):
-    # Build the body and the neural network from the genotype
-    bodysize = grid*grid*env.materials
-    body = env.makeBody(genotype[:bodysize], grid)
-    controller = fnn.FNN(layers)
-    controller.weightrange = weightrange
-    controller.biasrange = weightrange
-    controller.setParams(genotype[bodysize:])
+    # Build the body from the genotype (or use the fixed one), and the brain from the rest
+    if mode == "codesign":
+        bodysize = grid*grid*env.materials
+        robotbody = env.makeBody(genotype[:bodysize], grid)
+    else:
+        bodysize = 0
+        robotbody = env.loadBody(body)
+    brain = fnn.FNN(env.brainLayers(controller, loop, robotbody.shape, hidden))
+    brain.weightrange = weightrange
+    brain.biasrange = weightrange
+    brain.setParams(genotype[bodysize:])
 
     # Put the brain in the body
-    robot = env.SoftRobot(body, controller, envname, duration, period, render=render)
+    robot = env.SoftRobot(robotbody, brain, controller, loop, envname, duration, period, render=render)
 
     # Variables to store time-varying data
     pos = np.zeros((duration,2))
@@ -40,9 +44,9 @@ def SimInd(genotype):
     robot.close()
 
     print("Fitness (distance walked):",fitness)
-    return body, pos, muscles
+    return robotbody, pos, muscles
 
 # Simulate and save data in a file
 genotype = np.load('best.npy')
-body, pos, muscles = SimInd(genotype)
-np.savez('sim.npz', body=body, pos=pos, muscles=muscles)
+robotbody, pos, muscles = SimInd(genotype)
+np.savez('sim.npz', body=robotbody, pos=pos, muscles=muscles)

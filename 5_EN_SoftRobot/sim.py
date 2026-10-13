@@ -28,7 +28,7 @@ from neural_controller import CONTROLLERS, DEFAULT_HIDDEN, DEFAULT_PERIOD
 from evolve import config_path_for, decode_body_from_genome, decode_controller
 
 
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Simulate an evolved EvoGym soft robot.")
     parser.add_argument("--genome", type=str, default=None,
                         help="Genome saved by evolve.py --output (its .json settings file must sit "
@@ -50,7 +50,8 @@ def parse_args():
     parser.add_argument("--render", action="store_true", help="Watch the episode live in a window")
     parser.add_argument("--seed", type=int, default=None,
                         help="[no --genome only] Seed for the random brain's weights")
-    return parser.parse_args()
+    parser.add_argument("--quiet", action="store_true", help="Don't print anything (useful when calling main() many times)")
+    return parser.parse_args(argv)
 
 
 def build(args):
@@ -63,8 +64,9 @@ def build(args):
                "period": DEFAULT_PERIOD}
         n_genes = CONTROLLERS[args.controller].genome_size(body.shape, args.loop == "closed", cfg["hidden"])
         genome = np.random.default_rng(args.seed).uniform(-1, 1, n_genes)
-        print(f"No --genome given: running body '{args.body}' with a random {args.loop}-loop "
-              f"{args.controller} brain.")
+        if not args.quiet:
+            print(f"No --genome given: running body '{args.body}' with a random {args.loop}-loop "
+                  f"{args.controller} brain.")
     else:
         cfg_path = config_path_for(args.genome)
         if not os.path.exists(cfg_path):
@@ -76,7 +78,8 @@ def build(args):
         body = decode_body_from_genome(genome, cfg)
         brain = "fixed traveling-wave" if cfg["mode"] == "morphology" else \
             f"{cfg['loop']}-loop {cfg['controller']}"
-        print(f"Loaded {args.genome} ({cfg['mode']} mode, {brain} brain, evolved on {cfg['env']})")
+        if not args.quiet:
+            print(f"Loaded {args.genome} ({cfg['mode']} mode, {brain} brain, evolved on {cfg['env']})")
     if args.env is not None:
         cfg["env"] = args.env
     if args.duration is not None:
@@ -84,10 +87,14 @@ def build(args):
     return body, cfg, genome
 
 
-def main():
-    args = parse_args()
+def main(argv=None):
+    """Run one episode and return its reward. `argv` is a list of the same
+    arguments you'd type on the command line, e.g. main(["--body", "worm"]);
+    with no list, they're read from the command line."""
+    args = parse_args(argv)
     body, cfg, genome = build(args)
-    print(body_to_string(body))
+    if not args.quiet:
+        print(body_to_string(body))
     if not is_valid_body(body):
         raise SystemExit("This body can't be built (disconnected, or no actuators).")
 
@@ -102,8 +109,9 @@ def main():
     env.close()
 
     com = trace["com"]
-    print(f"\nTask: {cfg['env']} | steps: {len(com)} | total reward (fitness): {reward:.3f}")
-    print(f"Center of mass moved {com[-1, 0] - com[0, 0]:+.3f} in x, {com[-1, 1] - com[0, 1]:+.3f} in y")
+    if not args.quiet:
+        print(f"\nTask: {cfg['env']} | steps: {len(com)} | total reward (fitness): {reward:.3f}")
+        print(f"Center of mass moved {com[-1, 0] - com[0, 0]:+.3f} in x, {com[-1, 1] - com[0, 1]:+.3f} in y")
 
     if args.gif:
         import imageio

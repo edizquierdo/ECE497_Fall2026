@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 
 import sim
 
-N = 10                       # random brains of each kind (try 100: it takes about 2 minutes)
+N = 100                       # random brains of each kind (try 100: it takes about 2 minutes)
 BODY = "example_body.txt"    # a preset ("biped", "worm", ...) or a body file
 
 kinds = [("local", "open"), ("local", "closed"), ("global", "open"), ("global", "closed")]

@@ -7,12 +7,15 @@ Simulate small CTRNNs with no inputs and see what they do on their own: settle d
 - `ctrnn.py`: the CTRNN. Each neuron has a state `y`, a bias `theta`, and a time constant `tau`, and follows `tau * dy/dt = -y + sum_j w_ji * sigmoid(y_j + theta_j) + I`. `step(dt)` advances it by one Euler step. `randomizeParameters()` picks random weights and biases in [-10, 10] and time constants in [0.1, 5]; `setCenterCrossing()` replaces the biases with center-crossing ones (see below).
 - `sim.py`: simulates one circuit and plots each neuron's output over time, and the first two neurons against each other ("output space").
 - `exp.py`: generates many random circuits of each size and counts how many oscillate, with random biases vs. center-crossing biases. Also plots how fast the oscillating ones oscillate.
+- `eas.py`: evolutionary algorithms (generational GA, microbial GA, hill climber, parallel hill climber). Each one evolves genotypes of numbers in [-1, 1] to maximize a fitness function you give it.
+- `evolve.py`: evolves a 2-neuron CTRNN to oscillate, using the microbial GA from `eas.py`. The genotype is scaled into weights and biases in [-10, 10] and time constants in [1, 5]. Fitness is how fast the outputs keep changing after a transient (`mean(|Δo|)/dt`). A circuit that settles down scores 0, so the only way to keep scoring is to oscillate. Plots best and average fitness over generations, then the best circuit's outputs over time.
 
 ## Run
 
 ```bash
 python3 sim.py   # one circuit: outputs over time, and the trajectory in output space
 python3 exp.py   # many circuits (~1 min): fraction that oscillate vs. network size; saves exp.npz
+python3 evolve.py  # evolve an oscillator (~10 s): fitness over generations, then the best circuit's outputs
 ```
 
 In `sim.py`, try changing:
@@ -23,6 +26,8 @@ In `sim.py`, try changing:
 - `seed`: set it to an integer to get the same circuit every time. Then switch between `"random"` and `"centercrossing"` with the same seed: same weights and time constants, only the biases change.
 
 In `exp.py`, try changing `sizes`, `samples`, or the ranges in `randomizeParameters()` in `ctrnn.py`.
+
+In `evolve.py`, try changing `size`, `generations`, `popsize`, or the EA (e.g. `eas.HillClimber` or `eas.Generational`, which take slightly different settings; see `eas.py`). The fitness only rewards change, not a particular rhythm: how would you change `fitnessFunction` to evolve a specific period?
 
 ## Center-crossing
 
